@@ -25,6 +25,7 @@ type Config struct {
 	Auth            *AuthConfig            `yaml:"auth"             json:"auth"`
 	Audit           *AuditConfig           `yaml:"audit"            json:"audit"`
 	OIDCAuth        *OIDCAuthConfig        `yaml:"oidc_auth"        json:"oidc_auth"`
+	FeishuLogin     *FeishuLoginConfig     `yaml:"feishu_login"     json:"feishu_login"`
 	Models          []ModelConfig          `yaml:"models"           json:"models"`
 	VectorDatabase  *VectorDatabaseConfig  `yaml:"vector_database"  json:"vector_database"`
 	DocReader       *DocReaderConfig       `yaml:"docreader"        json:"docreader"`
@@ -329,6 +330,28 @@ type OIDCAuthConfig struct {
 	UserInfoMapping       *OIDCUserInfoMapping `yaml:"user_info_mapping"      json:"user_info_mapping"`
 }
 
+// FeishuLoginConfig enables Feishu OAuth authorization-code login. Feishu does
+// not speak standard OIDC discovery/JWKS/form token exchange, so it is wired
+// separately from OIDCAuthConfig.
+type FeishuLoginConfig struct {
+	Enable    bool     `yaml:"enable"     json:"enable"`
+	AppID     string   `yaml:"app_id"     json:"app_id"`
+	AppSecret string   `yaml:"app_secret" json:"-"`
+	Scopes    []string `yaml:"scopes"     json:"scopes"`
+	// Optional endpoint overrides (tests / private gateways). Empty uses
+	// Feishu cloud defaults from applyFeishuLoginEnvOverrides.
+	AuthorizationEndpoint string `yaml:"authorization_endpoint" json:"authorization_endpoint"`
+	TokenEndpoint         string `yaml:"token_endpoint"         json:"token_endpoint"`
+	UserInfoEndpoint      string `yaml:"user_info_endpoint"     json:"user_info_endpoint"`
+}
+
+// Default Feishu OAuth endpoints (China cloud).
+const (
+	DefaultFeishuAuthorizeURL = "https://accounts.feishu.cn/open-apis/authen/v1/authorize"
+	DefaultFeishuTokenURL     = "https://open.feishu.cn/open-apis/authen/v2/oauth/token"
+	DefaultFeishuUserInfoURL  = "https://open.feishu.cn/open-apis/authen/v1/user_info"
+)
+
 // PromptTemplateI18n holds localized name and description for a prompt template.
 type PromptTemplateI18n struct {
 	Name        string `yaml:"name"        json:"name"`
@@ -589,6 +612,7 @@ func LoadConfig() (*Config, error) {
 
 	// Validate configuration values
 	applyOIDCEnvOverrides(&cfg)
+	applyFeishuLoginEnvOverrides(&cfg)
 	applyAgentEnvOverrides(&cfg)
 	applyKnowledgeBaseEnvOverrides(&cfg)
 	applyNetworkEnvOverrides()
@@ -635,6 +659,15 @@ func ValidateConfig(cfg *Config) error {
 		if strings.TrimSpace(cfg.OIDCAuth.DiscoveryURL) == "" &&
 			(strings.TrimSpace(cfg.OIDCAuth.AuthorizationEndpoint) == "" || strings.TrimSpace(cfg.OIDCAuth.TokenEndpoint) == "") {
 			errs = append(errs, "oidc_auth.discovery_url or both oidc_auth.authorization_endpoint and oidc_auth.token_endpoint are required when OIDC is enabled")
+		}
+	}
+
+	if cfg.FeishuLogin != nil && cfg.FeishuLogin.Enable {
+		if strings.TrimSpace(cfg.FeishuLogin.AppID) == "" {
+			errs = append(errs, "feishu_login.app_id is required when Feishu login is enabled")
+		}
+		if strings.TrimSpace(cfg.FeishuLogin.AppSecret) == "" {
+			errs = append(errs, "feishu_login.app_secret is required when Feishu login is enabled")
 		}
 	}
 
@@ -761,6 +794,60 @@ func applyOIDCEnvOverrides(cfg *Config) {
 	if cfg.OIDCAuth.DiscoveryURL == "" && cfg.OIDCAuth.IssuerURL != "" {
 		cfg.OIDCAuth.DiscoveryURL = strings.TrimRight(cfg.OIDCAuth.IssuerURL, "/") + "/.well-known/openid-configuration"
 	}
+}
+
+func applyFeishuLoginEnvOverrides(cfg *Config) {
+	if cfg.FeishuLogin == nil {
+		cfg.FeishuLogin = &FeishuLoginConfig{}
+	}
+
+	if value := strings.TrimSpace(os.Getenv("FEISHU_LOGIN_ENABLE")); value != "" {
+		cfg.FeishuLogin.Enable = strings.EqualFold(value, "true")
+	}
+	if value := strings.TrimSpace(os.Getenv("FEISHU_LOGIN_APP_ID")); value != "" {
+		cfg.FeishuLogin.AppID = value
+	}
+	if value := strings.TrimSpace(os.Getenv("FEISHU_LOGIN_APP_SECRET")); value != "" {
+		cfg.FeishuLogin.AppSecret = value
+	}
+	if value := strings.TrimSpace(os.Getenv("FEISHU_LOGIN_SCOPES")); value != "" {
+		cfg.FeishuLogin.Scopes = strings.Fields(strings.ReplaceAll(value, ",", " "))
+	}
+	if value := strings.TrimSpace(os.Getenv("FEISHU_LOGIN_AUTHORIZATION_ENDPOINT")); value != "" {
+		cfg.FeishuLogin.AuthorizationEndpoint = value
+	}
+	if value := strings.TrimSpace(os.Getenv("FEISHU_LOGIN_TOKEN_ENDPOINT")); value != "" {
+		cfg.FeishuLogin.TokenEndpoint = value
+	}
+	if value := strings.TrimSpace(os.Getenv("FEISHU_LOGIN_USER_INFO_ENDPOINT")); value != "" {
+		cfg.FeishuLogin.UserInfoEndpoint = value
+	}
+
+	if len(cfg.FeishuLogin.Scopes) == 0 {
+		cfg.FeishuLogin.Scopes = []string{
+			"contact:user.base:readonly",
+			"contact:user.email:readonly",
+			"auth:user.id:read",
+		}
+	}
+	if strings.TrimSpace(cfg.FeishuLogin.AuthorizationEndpoint) == "" {
+		cfg.FeishuLogin.AuthorizationEndpoint = DefaultFeishuAuthorizeURL
+	}
+	if strings.TrimSpace(cfg.FeishuLogin.TokenEndpoint) == "" {
+		cfg.FeishuLogin.TokenEndpoint = DefaultFeishuTokenURL
+	}
+	if strings.TrimSpace(cfg.FeishuLogin.UserInfoEndpoint) == "" {
+		cfg.FeishuLogin.UserInfoEndpoint = DefaultFeishuUserInfoURL
+	}
+}
+
+// FeishuLoginReady reports whether Feishu login is configured enough to expose
+// the login button and accept authorization callbacks.
+func (c *FeishuLoginConfig) FeishuLoginReady() bool {
+	if c == nil || !c.Enable {
+		return false
+	}
+	return strings.TrimSpace(c.AppID) != "" && strings.TrimSpace(c.AppSecret) != ""
 }
 
 func applyKnowledgeBaseEnvOverrides(cfg *Config) {

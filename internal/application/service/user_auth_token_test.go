@@ -101,6 +101,14 @@ func (s *stubUserRepoForAuth) GetUserByEmail(_ context.Context, email string) (*
 func (s *stubUserRepoForAuth) GetUserByUsername(context.Context, string) (*types.User, error) {
 	return nil, nil
 }
+func (s *stubUserRepoForAuth) GetUserByFeishuOpenID(_ context.Context, openID string) (*types.User, error) {
+	for _, user := range s.users {
+		if user != nil && user.FeishuOpenID == openID {
+			return user, nil
+		}
+	}
+	return nil, errors.New("user not found")
+}
 func (s *stubUserRepoForAuth) GetUserByTenantID(context.Context, uint64) (*types.User, error) {
 	return nil, nil
 }

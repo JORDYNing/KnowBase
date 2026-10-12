@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -90,6 +91,22 @@ func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*typ
 func (r *userRepository) GetUserByUsername(ctx context.Context, username string) (*types.User, error) {
 	var user types.User
 	if err := r.db.WithContext(ctx).Where("username = ?", username).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+// GetUserByFeishuOpenID gets a user by Feishu open_id
+func (r *userRepository) GetUserByFeishuOpenID(ctx context.Context, openID string) (*types.User, error) {
+	openID = strings.TrimSpace(openID)
+	if openID == "" {
+		return nil, ErrUserNotFound
+	}
+	var user types.User
+	if err := r.db.WithContext(ctx).Where("feishu_open_id = ?", openID).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound
 		}

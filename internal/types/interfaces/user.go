@@ -18,6 +18,11 @@ type UserService interface {
 	// provisioning is the default tenant mode for a newly auto-created user
 	// (resolved by the caller from auth.default_tenant_mode).
 	LoginWithOIDC(ctx context.Context, code, redirectURI string, provisioning types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error)
+	// GetFeishuAuthorizationURL builds the Feishu OAuth authorization URL.
+	GetFeishuAuthorizationURL(ctx context.Context, redirectURI string) (*types.OIDCAuthURLResponse, error)
+	// LoginWithFeishu exchanges the Feishu authorization code, binds or
+	// provisions a local user, and issues the same local JWT pair as OIDC.
+	LoginWithFeishu(ctx context.Context, code, redirectURI string, provisioning types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error)
 	// GetUserByID gets a user by ID
 	GetUserByID(ctx context.Context, id string) (*types.User, error)
 	// GetUsersByIDs batch-fetches users by id, returning a map keyed by
@@ -118,6 +123,8 @@ type UserRepository interface {
 	GetUserByEmail(ctx context.Context, email string) (*types.User, error)
 	// GetUserByUsername gets a user by username
 	GetUserByUsername(ctx context.Context, username string) (*types.User, error)
+	// GetUserByFeishuOpenID gets a user by Feishu open_id
+	GetUserByFeishuOpenID(ctx context.Context, openID string) (*types.User, error)
 	// GetUserByTenantID gets the first user (owner) of a tenant
 	GetUserByTenantID(ctx context.Context, tenantID uint64) (*types.User, error)
 	// UpdateUser updates a user

@@ -284,6 +284,9 @@ func (r *cleanupUserRepo) GetUserByEmail(context.Context, string) (*types.User, 
 func (r *cleanupUserRepo) GetUserByUsername(context.Context, string) (*types.User, error) {
 	return nil, nil
 }
+func (r *cleanupUserRepo) GetUserByFeishuOpenID(context.Context, string) (*types.User, error) {
+	return nil, nil
+}
 func (r *cleanupUserRepo) GetUserByTenantID(context.Context, uint64) (*types.User, error) {
 	return nil, nil
 }

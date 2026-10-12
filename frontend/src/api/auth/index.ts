@@ -68,6 +68,12 @@ export interface OIDCConfigResponse {
   message?: string
 }
 
+export interface FeishuConfigResponse {
+  success: boolean
+  enabled: boolean
+  message?: string
+}
+
 // 用户注册接口
 export interface RegisterRequest {
   username: string
@@ -248,6 +254,22 @@ export async function getOIDCConfig(): Promise<OIDCConfigResponse> {
   try {
     const response = await get('/api/v1/auth/oidc/config')
     return response as unknown as OIDCConfigResponse
+  } catch (error: any) {
+    return {
+      success: false,
+      enabled: false,
+      message: error.message || t('error.auth.loginFailed')
+    }
+  }
+}
+
+/**
+ * 获取飞书登录配置
+ */
+export async function getFeishuConfig(): Promise<FeishuConfigResponse> {
+  try {
+    const response = await get('/api/v1/auth/feishu/config')
+    return response as unknown as FeishuConfigResponse
   } catch (error: any) {
     return {
       success: false,

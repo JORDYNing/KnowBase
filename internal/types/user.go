@@ -117,6 +117,8 @@ type User struct {
 	PasswordHash string `json:"-"          gorm:"type:varchar(255);not null"`
 	// Avatar URL of the user
 	Avatar string `json:"avatar"     gorm:"type:varchar(500)"`
+	// FeishuOpenID binds a Feishu identity for SSO login. Empty means unbound.
+	FeishuOpenID string `json:"feishu_open_id,omitempty" gorm:"column:feishu_open_id;type:varchar(64)"`
 	// Workspace ID that the user belongs to
 	TenantID uint64 `json:"tenant_id"  gorm:"index"`
 	// Whether the user is active
@@ -183,6 +185,12 @@ type OIDCConfigResponse struct {
 	Success             bool   `json:"success"`
 	Enabled             bool   `json:"enabled"`
 	ProviderDisplayName string `json:"provider_display_name,omitempty"`
+}
+
+// FeishuConfigResponse tells the SPA whether to show the Feishu login button.
+type FeishuConfigResponse struct {
+	Success bool `json:"success"`
+	Enabled bool `json:"enabled"`
 }
 
 type OIDCCallbackResponse struct {

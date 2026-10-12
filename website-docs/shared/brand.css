@@ -41,12 +41,7 @@ html.dark {
   --wk-accent-border: #685638;
 }
 
-/* Original README artwork, copied byte-for-byte. Only blank outer canvas is
-   hidden (source viewport: x=0, y=208, width=945, height=238). Keep the full
-   lettering, sail and waves. Blend away the blank background in light mode;
-   the user-approved inverted presentation is applied only in dark mode. */
-.wk-logo { position: relative; display: inline-block; width: 164px; aspect-ratio: 945 / 238; overflow: hidden; flex-shrink: 0; vertical-align: middle; mix-blend-mode: multiply; }
-html.dark .wk-logo { mix-blend-mode: screen; }
-html.dark .wk-logo img { filter: invert(1) hue-rotate(180deg); }
-.wk-logo img { position: absolute; display: block; left: 0; top: -87.394958%; width: 100%; max-width: none; height: auto; }
+/* Gamelib horizontal wordmark (transparent PNG). */
+.wk-logo { position: relative; display: inline-block; width: 164px; aspect-ratio: 1150 / 256; overflow: hidden; flex-shrink: 0; vertical-align: middle; }
+.wk-logo img { position: absolute; display: block; left: 0; top: 0; width: 100%; max-width: none; height: auto; }
 @media (max-width: 480px) { .wk-brand .wk-logo { width: 148px; } }

@@ -51,6 +51,10 @@ var noAuthAPI = map[string][]string{
 	"/api/v1/auth/oidc/url":           {"GET"},
 	"/api/v1/auth/oidc/start":         {"GET"},
 	"/api/v1/auth/oidc/callback":      {"GET"},
+	"/api/v1/auth/feishu/config":      {"GET"},
+	"/api/v1/auth/feishu/start":       {"GET"},
+	"/api/v1/auth/feishu/callback":    {"GET"},
+
 	// MCP OAuth provider redirect: the third-party authorization server
 	// redirects the browser here without a WeKnora bearer token. The request
 	// is authenticated by the opaque, single-use `state` parameter instead.

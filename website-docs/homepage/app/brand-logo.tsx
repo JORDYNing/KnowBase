@@ -1,7 +1,17 @@
 import Image from "next/image";
 import { homeAssets } from "../../shared/header";
 
-/** Show the complete original artwork; the viewport only trims blank canvas. */
+/** Horizontal Gamelib wordmark for the product homepage masthead. */
 export function BrandLogo({ priority = false }: { priority?: boolean }) {
-  return <span className="wk-logo"><Image src={`${homeAssets}/brand/weknora-original.png`} alt="WeKnora" width={945} height={650} priority={priority} /></span>;
+  return (
+    <span className="wk-logo">
+      <Image
+        src={`${homeAssets}/brand/gamelib.png`}
+        alt="Gamelib"
+        width={1150}
+        height={256}
+        priority={priority}
+      />
+    </span>
+  );
 }
