@@ -125,7 +125,7 @@ curl -X DELETE $BASE/api/v1/chunks/by-id/c-1/questions -H "Authorization: Bearer
 
 ```bash
 curl -X PUT $BASE/api/v1/chunks/by-id/c-1/questions -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' -d '{"question_id":"q-1","question":"WeKnora 如何配置向量库？"}'
+  -H 'Content-Type: application/json' -d '{"question_id":"q-1","question":"Gamelib 如何配置向量库？"}'
 ```
 
 ### POST /api/v1/chunks/by-id/:id/questions/regenerate

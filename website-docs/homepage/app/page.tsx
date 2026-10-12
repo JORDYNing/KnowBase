@@ -9,7 +9,6 @@ import { Header, ProductVideo } from "./interactive";
 import { clients, dataSources, modelProviders, IntegrationMark } from "./brands";
 import s from "./home.module.css";
 
-const repo = "https://github.com/Tencent/WeKnora";
 const docs = "/docs/";
 const guide = (path: string) => `${docs}${path}.html`;
 const modes = [
@@ -27,11 +26,11 @@ const withAvailability = (slide: SlideSource): GallerySlide => {
 };
 const releaseSlides = [
   { name: "本机浏览器", icon: "browser", shots: [
-    { label: "执行任务", icon: "browser", image: "local-browser-task", alt: "WeKnora 实际界面：智能推理对话正在操作本机浏览器，对话中显示任务预览与暂停、继续、结束控制" },
-    { label: "连接扩展", icon: "plug", image: "browser-connection", alt: "WeKnora 实际界面：工具箱的浏览器连接页，BrowserSkill 扩展已连接并列出智能体可执行的网页操作" },
+    { label: "执行任务", icon: "browser", image: "local-browser-task", alt: "Gamelib 实际界面：智能推理对话正在操作本机浏览器，对话中显示任务预览与暂停、继续、结束控制" },
+    { label: "连接扩展", icon: "plug", image: "browser-connection", alt: "Gamelib 实际界面：工具箱的浏览器连接页，BrowserSkill 扩展已连接并列出智能体可执行的网页操作" },
   ], title: "操作你电脑上的浏览器", description: "借助腾讯开源的 BrowserSkill 扩展，智能体直接在你的 Chrome 或 Edge 中打开网页、填写表单；遇到登录或验证码时交给你。", link: guide("05-clients/09-local-browser"), external: { label: "BrowserSkill", href: "https://github.com/Tencent/BrowserSkill", logo: "browserskill.png" } },
-  { name: "MCP Server", icon: "plug", image: "mcp-server-endpoint", title: "把知识库发布给其他 AI 工具", description: "为空间创建 MCP 端点，Claude、Cursor 等客户端连上即可检索知识库和提问。", alt: "WeKnora 实际界面：MCP 端点的连接信息，包含端点地址与 Cursor、Claude Desktop 的 mcpServers 配置", link: guide("03-features/08-mcp") },
-  { name: "对话控制", icon: "branch", image: "chat-steer-queue", title: "随时调整进行中的对话", description: "回答中途可以补充要求，也能从任意一次提问分叉或回滚；生成的文件统一收在「产物」页。", alt: "WeKnora 实际界面：回答生成期间，输入框上方排队等待的补充要求", link: guide("03-features/18-chat-experience") },
+  { name: "MCP Server", icon: "plug", image: "mcp-server-endpoint", title: "把知识库发布给其他 AI 工具", description: "为空间创建 MCP 端点，Claude、Cursor 等客户端连上即可检索知识库和提问。", alt: "Gamelib 实际界面：MCP 端点的连接信息，包含端点地址与 Cursor、Claude Desktop 的 mcpServers 配置", link: guide("03-features/08-mcp") },
+  { name: "对话控制", icon: "branch", image: "chat-steer-queue", title: "随时调整进行中的对话", description: "回答中途可以补充要求，也能从任意一次提问分叉或回滚；生成的文件统一收在「产物」页。", alt: "Gamelib 实际界面：回答生成期间，输入框上方排队等待的补充要求", link: guide("03-features/18-chat-experience") },
 ].map(withAvailability);
 const wikiSlides = [
   { name: "知识图谱", icon: "channels", image: "wiki-graph", title: "顺着链接，查看相关知识", description: "在知识图谱中查看页面之间的关系。点击条目，即可阅读相关内容。", alt: "Wiki 知识图谱：日常费用报销条目与相关页面的链接关系，右侧展示条目详情" },
@@ -39,12 +38,12 @@ const wikiSlides = [
   { name: "版本历史", icon: "history", image: "wiki-revision-history", title: "随时编辑，改动可回溯", description: "直接修订页面，也可让智能体协助维护。查看版本差异，必要时恢复到历史内容。", alt: "Wiki 版本历史：年假页面的历史版本列表、内容差异和回滚入口" },
 ].map(withAvailability);
 const sandboxSlides = [
-  { name: "会话级沙箱", icon: "sandbox", image: "skill-sandbox-chat", title: "在同一沙箱中继续执行任务", description: "支持 Docker、E2B、Cube。同一会话的多轮任务共用一个工作区，生成的文件可预览和下载。", alt: "WeKnora 实际界面：智能体根据知识库生成 Word 文档，并在对话旁打开产物预览", link: guide("03-features/22-skills-sandbox") },
+  { name: "会话级沙箱", icon: "sandbox", image: "skill-sandbox-chat", title: "在同一沙箱中继续执行任务", description: "支持 Docker、E2B、Cube。同一会话的多轮任务共用一个工作区，生成的文件可预览和下载。", alt: "Gamelib 实际界面：智能体根据知识库生成 Word 文档，并在对话旁打开产物预览", link: guide("03-features/22-skills-sandbox") },
   { name: "图形桌面与终端", icon: "monitor", shots: [
-    { label: "图形桌面", icon: "monitor", image: "sandbox-desktop", alt: "WeKnora 实际界面：对话右侧沙箱面板的桌面页签，显示沙箱内的 XFCE 图形桌面与文件管理器" },
-    { label: "交互终端", icon: "terminal", image: "sandbox-terminal", alt: "WeKnora 实际界面：对话右侧的沙箱终端，列出工作区 output 目录中生成的 Word 文件" },
+    { label: "图形桌面", icon: "monitor", image: "sandbox-desktop", alt: "Gamelib 实际界面：对话右侧沙箱面板的桌面页签，显示沙箱内的 XFCE 图形桌面与文件管理器" },
+    { label: "交互终端", icon: "terminal", image: "sandbox-terminal", alt: "Gamelib 实际界面：对话右侧的沙箱终端，列出工作区 output 目录中生成的 Word 文件" },
   ], title: "打开桌面和终端，看清每一步", description: "在对话旁打开图形桌面或交互终端，查看智能体的每一步操作，必要时亲自接手。", link: guide("03-features/22-skills-sandbox") },
-  { name: "技能目录", icon: "skills", image: "skill-catalog", title: "安装、管理和复用技能", description: "从 ClawHub、SkillHub、Git 或 ZIP 安装技能，在空间内统一管理和复用。", alt: "WeKnora 实际界面：工具箱的技能管理页，列出 docx、pptx、pdf 技能及其安装到的沙箱", link: guide("03-features/22-skills-sandbox") },
+  { name: "技能目录", icon: "skills", image: "skill-catalog", title: "安装、管理和复用技能", description: "从 ClawHub、SkillHub、Git 或 ZIP 安装技能，在空间内统一管理和复用。", alt: "Gamelib 实际界面：工具箱的技能管理页，列出 docx、pptx、pdf 技能及其安装到的沙箱", link: guide("03-features/22-skills-sandbox") },
 ].map(withAvailability);
 
 export default function Home() {
@@ -57,14 +56,14 @@ export default function Home() {
         <div className={s.heroGrid}>
           <h1 id="hero-title">帮你找到答案，<br /><em>并将知识付诸实践。</em></h1>
           <div className={s.heroAside}>
-            <p className={s.eyebrow}>TENCENT OPEN SOURCE · WEKNORA</p>
-            <p className={s.heroDescription}>腾讯开源的企业级知识管理框架。<br />汇集团队资料，用于知识问答、任务执行和 Wiki 整理。</p>
-            <div className={s.actions}><a className={s.primary} href="#get-started">开始使用 <Icon name="arrow" /></a><a className={s.secondary} href={repo} target="_blank" rel="noreferrer"><Icon name="github" /> GitHub</a></div>
+            <p className={s.eyebrow}>GAMELIB</p>
+            <p className={s.heroDescription}>企业级知识管理框架。<br />汇集团队资料，用于知识问答、任务执行和 Wiki 整理。</p>
+            <div className={s.actions}><a className={s.primary} href="#get-started">开始使用 <Icon name="arrow" /></a></div>
             <p className={s.heroNote}>RAG 问答 / Agent 推理 / 自动 Wiki</p>
           </div>
         </div>
         <ProductVideo />
-        <div className={s.trustBar}><span><Icon name="github" /> 腾讯开源 · MIT License</span><span><Icon name="server" /> 支持私有化部署</span><span><Icon name="model" /> 自由选择模型与存储</span></div>
+        <div className={s.trustBar}><span><Icon name="server" /> 支持私有化部署</span><span><Icon name="model" /> 自由选择模型与存储</span></div>
       </section>
       <section id="capabilities" className={`${s.shell} ${s.section}`} aria-labelledby="capabilities-title">
         <div className={s.sectionHeading}><div><p className={s.eyebrow}>01 / KNOWLEDGE AT WORK</p><h2 id="capabilities-title">知识问答、任务执行与自动 Wiki</h2></div><p>查询资料用 RAG，处理多步任务用 Agent，<br />整理知识用 Wiki。三种能力共享同一知识库。</p></div>
@@ -115,7 +114,7 @@ export default function Home() {
           <article className={s.startCard}>
             <div className={s.startLabel}><Image className={s.startBrand} src={`${homeAssets}/brands/tencent-cloud.ico`} alt="腾讯云 Logo" width={32} height={32} /><span>云端部署</span></div>
             <h3>腾讯云轻量应用服务器</h3>
-            <p>通过应用模板部署 WeKnora，在自己的云服务器上运行。</p>
+            <p>通过应用模板部署 Gamelib，在自己的云服务器上运行。</p>
             <a className={s.textLink} href="https://mc.tencent.com/s69nKCVz" target="_blank" rel="noreferrer">前往腾讯云部署 <Icon name="external" /></a>
           </article>
           <article className={s.startCard}>
@@ -127,6 +126,6 @@ export default function Home() {
         </div>
       </section>
     </main>
-    <footer className={`${s.shell} ${s.footer}`}><a className={s.brand} href="/" aria-label="WeKnora 首页"><BrandLogo /></a><p>Tencent Open Source · MIT License</p><nav aria-label="页脚导航"><a href={docs}>文档</a><a href={repo} target="_blank" rel="noreferrer">GitHub <Icon name="external" /></a><a href={`${repo}/blob/main/CHANGELOG.md`} target="_blank" rel="noreferrer">更新日志</a></nav></footer>
+    <footer className={`${s.shell} ${s.footer}`}><a className={s.brand} href="/" aria-label="Gamelib 首页"><BrandLogo /></a><p>Gamelib</p><nav aria-label="页脚导航"><a href={docs}>文档</a><a href="/docs/07-releases/v0.8.2.html">更新日志</a></nav></footer>
   </div>;
 }

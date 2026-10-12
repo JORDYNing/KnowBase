@@ -1,18 +1,18 @@
-# weknora — WeKnora CLI
+# weknora — Gamelib CLI
 
-A command-line interface for the WeKnora RAG knowledge-base server. Lets you
+A command-line interface for the Gamelib RAG knowledge-base server. Lets you
 authenticate, manage knowledge bases and documents, run hybrid search, and
 ask streaming RAG questions from your terminal or from an AI agent.
 
 ```bash
 $ weknora --help
-Command-line client for the WeKnora RAG server. Manage knowledge bases
+Command-line client for the Gamelib RAG server. Manage knowledge bases
 and documents, run hybrid search, chat with grounded answers, or expose
 a curated read-only MCP tool surface for AI agents.
 
 Available Commands:
   agent       Manage custom agents (CRUD + status/check)
-  api         Make a raw API request to the WeKnora server
+  api         Make a raw API request to the Gamelib server
   auth        Manage authentication credentials and profiles
   chat        Ask a streaming RAG question against a knowledge base
   chunk       Manage document chunks (RAG retrieval debug)
@@ -48,8 +48,8 @@ For contributing to the CLI source, see [AGENTS.md](AGENTS.md).
 Requires Go 1.26+.
 
 ```bash
-git clone https://github.com/Tencent/WeKnora.git
-cd WeKnora/cli
+
+cd Gamelib/cli
 go build -o weknora .
 sudo mv weknora /usr/local/bin/   # or anywhere on $PATH
 ```
@@ -65,7 +65,7 @@ until then, use the from-source build above.
 ## 5-minute quickstart
 
 ```bash
-# 1. Register your WeKnora server as a profile and make it active
+# 1. Register your Gamelib server as a profile and make it active
 weknora profile add prod --host https://kb.example.com --use
 
 # 2. Authenticate the active profile (interactive password prompt)
@@ -118,7 +118,7 @@ weknora agent check ag_abc     # deep: probes every KB in the agent's scope
 
 ### Agent quick start
 
-For AI agents (any MCP-capable host) integrating WeKnora:
+For AI agents (any MCP-capable host) integrating Gamelib:
 
 1. Install: build from source (see [Install](#install))
 2. Authenticate. In a sandbox / CI, the **stateless** path needs no `auth login`
@@ -143,7 +143,7 @@ For AI agents (any MCP-capable host) integrating WeKnora:
    any destructive call.
 
 **Bundled Agent Skills.** This CLI ships [Agent Skills](https://agentskills.io/specification)
-under [`skills/`](skills/) that teach an agent to drive WeKnora without trial and error:
+under [`skills/`](skills/) that teach an agent to drive Gamelib without trial and error:
 
 - [`weknora-shared`](skills/weknora-shared/SKILL.md) — **read first**: auth/profile
   sequence, `--kb` resolution, the JSON-envelope + exit-code contract, the exit-10
@@ -302,7 +302,7 @@ is the guard against unintended writes.
 
 ## Advanced operations not exposed as flags
 
-WeKnora CLI exposes top use cases as polished commands; deep
+Gamelib CLI exposes top use cases as polished commands; deep
 configuration goes through the raw HTTP passthrough. CLI flag coverage
 targets common workflows, not 1:1 API parity. Examples of deep
 operations that intentionally go through `weknora api`:
@@ -450,7 +450,7 @@ macOS / Windows × Go 1.26, path-filtered to changes under `cli/`.
 ## Contributing / Reporting issues
 
 - **Bugs and feature requests**: file an issue at
-  [github.com/Tencent/WeKnora/issues](https://github.com/Tencent/WeKnora/issues).
+
 - **Security disclosures**: see the repository-level
   [SECURITY.md](../SECURITY.md). Do not file public issues for
   security findings.

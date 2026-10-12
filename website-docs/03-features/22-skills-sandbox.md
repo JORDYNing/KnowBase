@@ -70,7 +70,7 @@
 
 Docker 后端默认关闭。系统管理员在「系统设置 → 网络安全」启用，或用 `WEKNORA_SANDBOX_DOCKER_ENABLED=true` 作为未落库时的回退。本机连接还需要把实际 Docker socket 挂给 app；这授予 app 控制宿主机 Docker 的能力。远端 TCP daemon 要配置 TLS 证书目录，其中包括 `ca.pem`、`cert.pem`、`key.pem`。Docker 网络仅接受 `bridge` 或 `none`，可选 `runsc` 等已安装 OCI runtime。
 
-自托管 E2B/Cube 的 `proxy_url` 指向数据面网关：WeKnora 连接网关但保留沙箱 Host，用于没有泛域名 DNS 的集群。`allow_private_endpoints` 允许连接私网/回环的集群地址，仍不放行 link-local/云元数据地址；它与沙箱里脚本能否出网是不同配置。
+自托管 E2B/Cube 的 `proxy_url` 指向数据面网关：Gamelib 连接网关但保留沙箱 Host，用于没有泛域名 DNS 的集群。`allow_private_endpoints` 允许连接私网/回环的集群地址，仍不放行 link-local/云元数据地址；它与沙箱里脚本能否出网是不同配置。
 
 脚本默认以沙箱内的 `root` 账号执行，模板中的 `user` 账号需显式选择。执行隔离由容器或远端沙箱提供，`/workspace` 只约定工作目录，不限制 root 命令的文件访问权限。
 
@@ -90,7 +90,7 @@ Cube/E2B 的 `config.network` 同时用于对话沙箱、技能安装和完整�
 
 自 v0.8.2 起，[Lite 桌面版](../05-clients/05-desktop.md)在 macOS 上用系统 Seatbelt 隔离运行智能体的命令和文件工具。智能体选了 Docker、E2B 或 Cube 配置时仍走远程沙箱；没有选沙箱配置时才使用本机沙箱。Windows 和 Linux 暂不提供该能力，此时未选配置的智能体不能执行命令。
 
-- **工作目录**：在新对话页点「选择项目」，通过系统目录选择框选定项目文件夹，对话标题栏会显示项目名。不选时显示「临时工作区」，自动在 `~/Documents/WeKnoraLite/<日期>/session-*` 下创建会话目录。不能选择主目录本身、包含主目录的目录或 `~/Library` 下的目录。
+- **工作目录**：在新对话页点「选择项目」，通过系统目录选择框选定项目文件夹，对话标题栏会显示项目名。不选时显示「临时工作区」，自动在 `~/Documents/GamelibLite/<日期>/session-*` 下创建会话目录。不能选择主目录本身、包含主目录的目录或 `~/Library` 下的目录。
 - **路径**：工作区是真实的本机路径，没有 `/workspace`、`/workspace/input` 和 `/workspace/output`。智能体直接在项目中修改文件，这些文件不会进入对话的产物列表；删除对话也不会删除本机目录。
 - **限制**：命令默认不能联网，只能写入项目目录，项目内的 `.git` 为只读。主目录中除常用开发工具链（如 `.nvm`、`.pyenv`、`.cargo`）外的内容不可读，`.ssh`、`.aws`、钥匙串等凭据位置始终不可读。
 - **回退**：对话回退不会还原本机项目文件，需要时请自行用 Git 管理。

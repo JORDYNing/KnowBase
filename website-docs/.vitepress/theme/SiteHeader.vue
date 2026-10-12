@@ -2,7 +2,7 @@
 import { computed, h, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useData, useRoute } from 'vitepress'
 import Search from 'vitepress/dist/client/theme-default/components/VPNavBarSearch.vue'
-import { repositoryUrl, headerIcons, homeAssets } from '../../shared/header'
+import { headerIcons, homeAssets } from '../../shared/header'
 const { isDark } = useData()
 const route = useRoute()
 const docsNavigation = [
@@ -29,14 +29,12 @@ onUnmounted(() => document.removeEventListener('keydown', closeMenu))
 <template>
   <header class="wk-header wk-docs-header">
     <div class="wk-header-inner">
-      <a class="wk-brand" href="/" target="_self" aria-label="WeKnora 首页"><span class="wk-logo"><img :src="`${homeAssets}/brand/weknora-original.png`" alt="WeKnora" width="945" height="650"></span></a>
+      <a class="wk-brand" href="/" target="_self" aria-label="Gamelib 首页"><span class="wk-logo"><img :src="`${homeAssets}/brand/gamelib.png`" alt="Gamelib" width="1150" height="256"></span></a>
       <nav id="main-navigation" class="wk-navigation" :class="{ 'is-open': open }" aria-label="文档导航">
         <a v-for="item in docsNavigation" :key="item.href" :href="item.href" :aria-current="route.path.startsWith(item.section) ? 'page' : undefined" @click="open = false">{{ item.label }}</a>
         <div class="wk-header-search"><Search /></div>
-        <a class="wk-mobile-github" :href="repositoryUrl" target="_blank" rel="noreferrer">GitHub <HeaderIcon name="external" /></a>
       </nav>
       <button class="wk-theme-toggle" type="button" role="switch" :aria-checked="isDark" :aria-label="label" :title="label" @click="isDark = !isDark"><HeaderIcon :name="isDark ? 'moon' : 'sun'" /></button>
-      <a class="wk-header-github" :href="repositoryUrl" target="_blank" rel="noreferrer"><HeaderIcon name="github" /><span>GitHub</span></a>
       <button ref="menu" class="wk-menu-toggle" type="button" :aria-label="open ? '关闭导航' : '打开导航'" :aria-expanded="open" aria-controls="main-navigation" @click="open = !open"><HeaderIcon :name="open ? 'close' : 'menu'" /></button>
     </div>
   </header>

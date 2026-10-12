@@ -22,8 +22,8 @@ function buildViewModel(locale, languageIndex) {
 
 Page({
   data: {
-    settingsTitle: "连接 WeKnora",
-    settingsSubtitle: "填写 WeKnora API 地址与租户 API Key。",
+    settingsTitle: "连接 Gamelib",
+    settingsSubtitle: "填写 Gamelib API 地址与租户 API Key。",
     apiBaseUrlLabel: "API 地址",
     apiBaseUrlPlaceholder: "https://your-weknora.example.com",
     apiKeyLabel: "API Key",
