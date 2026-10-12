@@ -21,4 +21,4 @@ const server = createServer(async (request, response) => {
     else createReadStream(file.path).pipe(response);
   } catch { response.writeHead(500).end('Unable to serve this page'); }
 });
-server.listen(port, '127.0.0.1', () => console.log(`WeKnora unified preview: http://127.0.0.1:${port}/`));
+server.listen(port, '127.0.0.1', () => console.log(`Gamelib unified preview: http://127.0.0.1:${port}/`));

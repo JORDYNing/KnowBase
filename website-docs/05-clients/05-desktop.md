@@ -1,10 +1,10 @@
-# 桌面客户端（WeKnora Lite Desktop）
+# 桌面客户端（Gamelib Lite Desktop）
 
 ::: warning 尚未正式发布
 桌面应用目前没有随 Release 提供安装包，需按[安装部署](../01-getting-started/02-installation.md)自行构建。
 :::
 
-WeKnora Lite 桌面应用基于 [Wails v2](https://wails.io)，在桌面进程中运行 Go 后端，使用 SQLite 和本地文件存储。启动后可管理知识库并进行检索问答，无需 Docker 或外部数据库。源码位于 `cmd/desktop/`，基础能力与[单二进制 Lite](../01-getting-started/02-installation.md)一致；桌面版另外提供免登录启动，以及在 macOS 上运行智能体命令的[本机沙箱](../03-features/22-skills-sandbox.md#lite-host)。
+Gamelib Lite 桌面应用基于 [Wails v2](https://wails.io)，在桌面进程中运行 Go 后端，使用 SQLite 和本地文件存储。启动后可管理知识库并进行检索问答，无需 Docker 或外部数据库。源码位于 `cmd/desktop/`，基础能力与[单二进制 Lite](../01-getting-started/02-installation.md)一致；桌面版另外提供免登录启动，以及在 macOS 上运行智能体命令的[本机沙箱](../03-features/22-skills-sandbox.md#lite-host)。
 
 ## 总体架构 {#_1-总体架构}
 
@@ -16,7 +16,7 @@ WeKnora Lite 桌面应用基于 [Wails v2](https://wails.io)，在桌面进程�
 
 ```mermaid
 flowchart LR
-    subgraph D["WeKnora Lite 桌面进程"]
+    subgraph D["Gamelib Lite 桌面进程"]
         W["Wails WebView (前端 SPA)"]
         P["Reverse Proxy (assetserver)"]
         B["内嵌 Gin 后端 (127.0.0.1:随机或固定端口)"]
@@ -39,7 +39,7 @@ flowchart LR
 
 `main.go` 的 `configureDesktopStorage()` 在检测到从 `.app/Contents/MacOS` 运行时：
 
-- 数据目录定为 `~/Library/Application Support/WeKnora Lite/`（名称取自 .app bundle 名）。
+- 数据目录定为 `~/Library/Application Support/Gamelib Lite/`（名称取自 .app bundle 名）。
 - SQLite 数据库：`.../data/weknora.db`（通过设置 `DB_PATH` 环境变量注入）。
 - 本地文件存储：`.../data/files`（`LOCAL_STORAGE_BASE_DIR`）。
 - `migrateLegacyDesktopData()` 会把旧版存放在 `.app/Contents/Resources/data` 里的数据一次性迁移到 Application Support。
@@ -62,14 +62,14 @@ flowchart LR
 
 `wails.Run(&options.App{...})` 的关键配置（见 `cmd/desktop/main.go`）：
 
-- 标题 `WeKnora Lite`，初始尺寸 **1280 × 800**，可调整大小，启动即显示。
+- 标题 `Gamelib Lite`，初始尺寸 **1280 × 800**，可调整大小，启动即显示。
 - `AssetServer.Handler` 使用反向代理指向内嵌后端 —— **前端资源并非 Go embed，而是后端 `./web` 目录（打包在 `.app/Contents/Resources/web`）提供的 SPA**。
 - macOS 专属：`mac.TitleBarHiddenInset()` 隐藏式标题栏，WebView 不透明。
-- 应用菜单：`About WeKnora`（含 "Open GitHub" 按钮，指向 `https://github.com/Tencent/WeKnora`）、`Check for Updates...`、`Quit`（Cmd+Q）、标准 Edit 菜单、`View > Reload`（Cmd+R，向前端发送 `app:reload` 事件）。
+- 应用菜单：`About Gamelib`（含 "Open GitHub" 按钮，指向 ` for Updates...`、`Quit`（Cmd+Q）、标准 Edit 菜单、`View > Reload`（Cmd+R，向前端发送 `app:reload` 事件）。
 
 `OnDomReady` 时向 WebView 注入三段 JS：
 
-1. `wailsThemeSyncJS`：按 `localStorage` 的 `WeKnora_theme` 同步深浅色主题与窗口背景色。
+1. `wailsThemeSyncJS`：按 `localStorage` 的 `Gamelib_theme` 同步深浅色主题与窗口背景色。
 2. `dragHandlerJS`：自定义窗口拖拽处理（绕过 Wails 的 CSS 变量拖拽检测，改用 `el.closest()` DOM 遍历 + 顶部 38px 标题栏区域判定，通过 WKWebView 消息桥发送 `drag`）；同时拦截外部 `http(s)` 链接与 `window.open`，改用系统浏览器打开（`BrowserOpenURL`）。
 3. 注入 `window.__WEKNORA_API_BASE__`（真实 API 根路径 `http://127.0.0.1:<port>/api/v1`）以及可选的 `window.__WEKNORA_API_LAN_BASE__`（LAN 访问地址）。
 
@@ -96,11 +96,11 @@ flowchart LR
 
 ## 偏好设置存储（cmd/desktop/prefs.go） {#_5-偏好设置存储-cmd-desktop-prefs-go}
 
-偏好保存为 JSON 文件 `desktop-prefs.json`，路径为 `os.UserConfigDir()/WeKnora Lite/desktop-prefs.json`：
+偏好保存为 JSON 文件 `desktop-prefs.json`，路径为 `os.UserConfigDir()/Gamelib Lite/desktop-prefs.json`：
 
-- macOS：`~/Library/Application Support/WeKnora Lite/desktop-prefs.json`
-- Windows：`%AppData%\WeKnora Lite\desktop-prefs.json`
-- Linux：`~/.config/WeKnora Lite/desktop-prefs.json`
+- macOS：`~/Library/Application Support/Gamelib Lite/desktop-prefs.json`
+- Windows：`%AppData%\Gamelib Lite\desktop-prefs.json`
+- Linux：`~/.config/Gamelib Lite/desktop-prefs.json`
 
 文件权限 `0600`，字段如下：
 
@@ -125,7 +125,7 @@ flowchart LR
 `checkUpdate(ctx, currentVersion, showUpToDate, autoDownload)` 在 goroutine 中执行：
 
 1. **版本来源**：`desktopAboutVersion()` 优先使用构建时 ldflags 注入的 `handler.Version`，否则向上查找仓库根目录的 `VERSION` 文件；无法确定版本时放弃检查。
-2. **检查**：GET `https://api.github.com/repos/Tencent/WeKnora/releases/latest`（超时 10s，带 `User-Agent: WeKnora-Lite-Desktop-App`；若设置了环境变量 `GITHUB_TOKEN` 则附带 `Authorization` 头以提升速率限制）。用 `golang.org/x/mod/semver` 比较 `tag_name` 与当前版本。
+2. **检查**：GET `https://api.github.com/repos/Tencent/WeKnora/releases/latest`（超时 10s，带 `User-Agent: Gamelib-Lite-Desktop-App`；若设置了环境变量 `GITHUB_TOKEN` 则附带 `Authorization` 头以提升速率限制）。用 `golang.org/x/mod/semver` 比较 `tag_name` 与当前版本。
 3. **选择资产**：`findBestAsset()` 按 `runtime.GOOS/GOARCH` 匹配 release assets 文件名——OS 关键词（`mac`/`win`/`linux`）+ 架构关键词（`amd64`/`arm64`，兼容 `universal`/`aarch64`），逐级回退：OS+Arch → 仅 OS → macOS 的 `.dmg` → Windows 的 `.exe`；均无匹配时打开 release 页面。
 4. **下载**：`downloadAndInstall()` 下载到系统临时目录；`autoDownload` 模式静默下载，手动模式先弹 "Update Available" 对话框。下载完成后询问 "Restart Now / Later"。
 5. **安装与重启**（`applyUpdateAndRestart()`，平台差异）：
@@ -139,12 +139,12 @@ flowchart LR
 
 ```json
 {
-  "name": "WeKnora Lite",
-  "outputfilename": "WeKnora Lite",
+  "name": "Gamelib Lite",
+  "outputfilename": "Gamelib Lite",
   "frontend:dir": "../../frontend",
   "wailsjsdir": "../../frontend/src",
   "build:tags": "desktop",
-  "info": { "companyName": "Tencent", "productName": "WeKnora Lite", "productVersion": "1.0.0" },
+  "info": { "companyName": "Tencent", "productName": "Gamelib Lite", "productVersion": "1.0.0" },
   "mac": { "category": "public.app-category.productivity", "titlebar": "hiddenInset" }
 }
 ```
@@ -154,7 +154,7 @@ flowchart LR
 - `build:tags` 为 `desktop`：只有带该标签编译的程序才包含 Lite 本机沙箱，`wails build -tags ...` 传入的标签会与它合并。
 - `frontend:dir` 指向仓库的 `frontend/`；`wailsjsdir` 指向 `frontend/src`，因此 Wails 自动生成的绑定输出在 `frontend/src/wailsjs/`（`go/main/App.js`、`App.d.ts` 及 `runtime/`）。
 - **前端构建**：打包脚本单独构建前端，Wails 配置中不设置 `frontend:build`。WebView 通过反向代理访问内嵌后端。
-- `cmd/desktop/build/` 包含 `appicon.png`（应用图标）、`darwin/Info.plist`（macOS bundle 的 Go template，声明 `CFBundleIdentifier: com.wails.WeKnora Lite`、最低系统版本 10.13、Retina 支持等）和 Windows 安装器模板 `windows/installer/project.nsi`（额外安装第三方许可证文件）；`wails build` 的产物输出到 `cmd/desktop/build/bin/`。
+- `cmd/desktop/build/` 包含 `appicon.png`（应用图标）、`darwin/Info.plist`（macOS bundle 的 Go template，声明 `CFBundleIdentifier: com.wails.Gamelib Lite`、最低系统版本 10.13、Retina 支持等）和 Windows 安装器模板 `windows/installer/project.nsi`（额外安装第三方许可证文件）；`wails build` 的产物输出到 `cmd/desktop/build/bin/`。
 
 ## 前端如何感知桌面环境 {#_8-前端如何感知桌面环境}
 
@@ -180,10 +180,10 @@ SKIP_FRONTEND=1 ./scripts/package-mac-app.sh
 2. **Wails 构建**：需先安装 Wails CLI（`go install github.com/wailsapp/wails/v2/cmd/wails@latest`），设置 `EDITION=lite`、`GOLANG_PROTOBUF_REGISTRATION_CONFLICT=warn`（规避 Milvus 与 Qdrant gRPC 生成代码的 `common.proto` 描述符注册冲突）等环境变量，从 `scripts/get_version.sh` 取版本号注入 ldflags，然后执行真实构建命令：
 
    ```bash
-   cd cmd/desktop && wails build -clean -tags "sqlite_fts5" -ldflags="$LDFLAGS" -o "WeKnora Lite"
+   cd cmd/desktop && wails build -clean -tags "sqlite_fts5" -ldflags="$LDFLAGS" -o "Gamelib Lite"
    ```
 
    实际生效的构建标签为 `wails.json` 中的 `desktop` 加上命令行的 `sqlite_fts5`。该命令的"生成绑定"阶段使用 `-tags bindings` 单独编译 `main_bindings.go`（不连接数据库），并刷新 `frontend/src/wailsjs/` 下的绑定文件。
-3. **组装产物**：将 `cmd/desktop/build/bin/WeKnora Lite.app` 复制到 `dist/`，并向 `.app/Contents/Resources/` 内放置第三方许可证（`scripts/copy-licenses.sh`）、`.env`（来自 `.env.lite.example`）、`config/`、`migrations/sqlite/` 与 `web/` 前端资源。
+3. **组装产物**：将 `cmd/desktop/build/bin/Gamelib Lite.app` 复制到 `dist/`，并向 `.app/Contents/Resources/` 内放置第三方许可证（`scripts/copy-licenses.sh`）、`.env`（来自 `.env.lite.example`）、`config/`、`migrations/sqlite/` 与 `web/` 前端资源。
 
-最终产物为 `dist/WeKnora Lite.app`，双击即可运行。Windows/Linux 亦可在 `cmd/desktop` 下用 `wails build` 自行构建（更新机制已按 `.exe` / `xdg-open` 做了平台适配），但仓库当前仅提供 macOS 打包脚本与 `build/darwin` 资源。
+最终产物为 `dist/Gamelib Lite.app`，双击即可运行。Windows/Linux 亦可在 `cmd/desktop` 下用 `wails build` 自行构建（更新机制已按 `.exe` / `xdg-open` 做了平台适配），但仓库当前仅提供 macOS 打包脚本与 `build/darwin` 资源。

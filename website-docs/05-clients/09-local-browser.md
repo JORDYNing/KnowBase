@@ -1,6 +1,6 @@
 # 本机浏览器接入与部署
 
-WeKnora 通过 BrowserSkill daemon 和 [BrowserSkill](https://github.com/Tencent/BrowserSkill) 浏览器扩展，将用户电脑上的浏览器接入智能推理对话。扩展支持 Chrome 和 Microsoft Edge（基于 Chromium 125 及以上），其他 Chromium 浏览器不保证兼容。浏览器在用户电脑上运行，daemon 在 WeKnora app 一侧运行，无需技能沙箱。网页剪藏和侧边栏知识库问答使用另一个[知识管理助手插件](06-chrome-extension.md)。
+Gamelib 通过 BrowserSkill daemon 和 [BrowserSkill](https://github.com/Tencent/BrowserSkill) 浏览器扩展，将用户电脑上的浏览器接入智能推理对话。扩展支持 Chrome 和 Microsoft Edge（基于 Chromium 125 及以上），其他 Chromium 浏览器不保证兼容。浏览器在用户电脑上运行，daemon 在 Gamelib app 一侧运行，无需技能沙箱。网页剪藏和侧边栏知识库问答使用另一个[知识管理助手插件](06-chrome-extension.md)。
 
 ## 安装扩展
 

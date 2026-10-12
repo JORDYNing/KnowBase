@@ -16,6 +16,7 @@ go 1.24.2
 
 ```bash
 go get github.com/Tencent/WeKnora/client
+
 ```
 
 导入：
@@ -309,7 +310,7 @@ v0.8.2 起的两处请求字段变化：
 
 `MCPService` 列表项带 `Catalog`（工具数、是否过期、同步时间）和 `UsageInstructions` 字段。
 
-### MCP 端点（WeKnora 作为 MCP Server）— `client/mcp_endpoint.go`
+### MCP 端点（Gamelib 作为 MCP Server）— `client/mcp_endpoint.go`
 
 | 方法 | 说明 |
 |---|---|
@@ -408,7 +409,7 @@ func (c *Client) AgentQAStreamWithRequest(ctx context.Context,
 
 ```go
 as := apiClient.NewAgentSession(session.ID)
-err := as.Ask(ctx, "介绍一下 WeKnora", func(ev *client.AgentStreamResponse) error {
+err := as.Ask(ctx, "介绍一下 Gamelib", func(ev *client.AgentStreamResponse) error {
     if ev.ResponseType == client.AgentResponseTypeAnswer {
         fmt.Print(ev.Content)
     }
@@ -491,6 +492,7 @@ import (
     "time"
 
     "github.com/Tencent/WeKnora/client"
+
 )
 
 func main() {
@@ -544,6 +546,7 @@ import (
     "strings"
 
     "github.com/Tencent/WeKnora/client"
+
 )
 
 func main() {
@@ -603,6 +606,7 @@ import (
     "fmt"
 
     "github.com/Tencent/WeKnora/client"
+
 )
 
 func main() {

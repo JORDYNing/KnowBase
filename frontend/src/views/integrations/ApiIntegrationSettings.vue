@@ -75,19 +75,6 @@
           </div>
         </template>
 
-        <div class="row row--doc">
-          <div class="row-info">
-            <label>{{ $t('tenant.api.docLabel') }}</label>
-            <p>
-              {{ $t('tenant.api.docDescription') }}
-              <a class="doc-link" @click="openApiDoc">
-                {{ $t('tenant.api.openDoc') }}
-                <t-icon name="link" class="link-icon" />
-              </a>
-            </p>
-          </div>
-        </div>
-
         <div class="api-key-section">
           <div class="api-key-section__header">
             <div class="api-key-section__title">
@@ -702,8 +689,6 @@ import {
 } from '@/config/apiKeyCapabilities'
 import { normalizeAPIKeyKnowledgeBaseIDs } from './apiKeyScope'
 import { consumeApiPlaygroundSSE } from './apiPlaygroundSSE'
-import { docsUrl } from '@/utils/docsUrl'
-
 const { t } = useI18n()
 
 const DEFAULT_DIRECT_HEADER_NAME = 'X-External-User-ID'
@@ -1429,10 +1414,6 @@ const saveDesktopPort = async () => {
   } catch (err: unknown) {
     MessagePlugin.error(err instanceof Error ? err.message : t('tenant.api.desktopPortSaveFailed'))
   }
-}
-
-function openApiDoc() {
-  window.open(docsUrl('apiOverview'), '_blank')
 }
 
 function openCreateAPIKeyDialog() {

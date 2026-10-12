@@ -1,4 +1,4 @@
-# WeKnora homepage source
+# Gamelib homepage source
 
 The Next.js homepage is one part of the unified site. Run `npm run setup`, `npm run build`, and `npm run preview` from the parent directory to include both the homepage and the complete `/docs/` site. Deployment instructions are in the parent README.
 
