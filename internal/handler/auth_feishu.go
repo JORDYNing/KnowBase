@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -59,7 +60,7 @@ func (h *AuthHandler) FeishuStart(c *gin.Context) {
 // @Router       /auth/feishu/callback [get]
 func (h *AuthHandler) FeishuRedirectCallback(c *gin.Context) {
 	ctx := c.Request.Context()
-	frontendRedirectURI := "/"
+	frontendRedirectURI := feishuFrontendRedirect("")
 
 	if providerError := strings.TrimSpace(c.Query("error")); providerError != "" {
 		redirectURL := frontendRedirectURI + "#oidc_error=" + urlQueryEscape(providerError)
@@ -76,6 +77,9 @@ func (h *AuthHandler) FeishuRedirectCallback(c *gin.Context) {
 		logger.Errorf(ctx, "Failed to decode Feishu state: %v", err)
 		c.Redirect(http.StatusFound, frontendRedirectURI+"#oidc_error="+urlQueryEscape("invalid_state"))
 		return
+	}
+	if decodedState != nil {
+		frontendRedirectURI = feishuFrontendRedirect(decodedState.RedirectURI)
 	}
 	c.SetCookie(oidcNonceCookieName, "", -1, "/", "", false, true)
 
@@ -112,9 +116,41 @@ func (h *AuthHandler) FeishuRedirectCallback(c *gin.Context) {
 }
 
 func feishuCallbackURL(c *gin.Context) string {
+	if origin := sanitizeReturnOrigin(c.Query("return_origin")); origin != "" {
+		return origin + "/api/v1/auth/feishu/callback"
+	}
 	scheme := "http"
 	if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
 		scheme = "https"
 	}
-	return scheme + "://" + c.Request.Host + "/api/v1/auth/feishu/callback"
+	host := strings.TrimSpace(c.GetHeader("X-Forwarded-Host"))
+	if host == "" {
+		host = c.Request.Host
+	}
+	return scheme + "://" + host + "/api/v1/auth/feishu/callback"
+}
+
+// sanitizeReturnOrigin accepts only an http(s) origin. The browser sends the
+// page it is actually on, so the Feishu redirect returns to the SPA instead
+// of the API port behind the dev proxy.
+func sanitizeReturnOrigin(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" || u.User != nil {
+		return ""
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return ""
+	}
+	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+func feishuFrontendRedirect(callbackURL string) string {
+	u, err := url.Parse(strings.TrimSpace(callbackURL))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "/"
+	}
+	return u.Scheme + "://" + u.Host + "/"
 }

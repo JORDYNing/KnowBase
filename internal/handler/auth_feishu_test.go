@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/config"
@@ -84,6 +85,31 @@ func TestFeishuStart_BuildsCallbackFromOrigin(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	want := "https://knowbase.example.com/api/v1/auth/feishu/callback"
+	if captured != want {
+		t.Errorf("callback = %q, want %q", captured, want)
+	}
+}
+
+func TestFeishuStart_UsesBrowserReturnOrigin(t *testing.T) {
+	var captured string
+	us := &stubFeishuUserService{
+		getFeishuAuthorizationURL: func(_ context.Context, redirectURI string) (*types.OIDCAuthURLResponse, error) {
+			captured = redirectURI
+			return &types.OIDCAuthURLResponse{Success: true, AuthorizationURL: "https://accounts.feishu.cn/x", Nonce: "n"}, nil
+		},
+	}
+	h := NewAuthHandler(&config.Config{}, us, nil, nil, nil)
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(errorCapture())
+	r.GET("/auth/feishu/start", h.FeishuStart)
+
+	req := httptest.NewRequest(http.MethodGet, "/auth/feishu/start?return_origin="+url.QueryEscape("http://127.0.0.1:5173"), nil)
+	req.Host = "localhost:8080"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	want := "http://127.0.0.1:5173/api/v1/auth/feishu/callback"
 	if captured != want {
 		t.Errorf("callback = %q, want %q", captured, want)
 	}
