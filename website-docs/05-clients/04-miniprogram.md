@@ -79,11 +79,11 @@ npm test    # 实际执行 node --test ../tests/miniprogram/*.test.js
 - `miniprogram/package.json` — 包名 `weknora-miniprogram`（version `0.1.0`），`description` 为 "WeChat Mini Program plugin for Gamelib"，**没有 `dependencies`**，仅有一个测试脚本（见下文「测试」）；
 - `miniprogram/project.config.json` — `compileType: "miniprogram"`，`libVersion: "latest"`（基础库使用最新版），编译选项开启 `es6`、`enhance`、`postcss`、`minified`、`minifyWXSS`、`minifyWXML`，并开启 `urlCheck: true`（合法域名校验）。该文件目前带有 `appid` 字段，自己的 AppID 通过私有配置文件提供（见「构建与发布流程」）。
 
-全局窗口样式：导航栏标题 `Gamelib`，背景色 `#0d3b2a`（深绿），文字白色。
+全局窗口样式：导航栏标题 `Gamelib`，背景色 `#021f58`（深蓝），文字白色。
 
 ### 页面清单
 
-`miniprogram/app.json` 中注册了 3 个页面，且三者同时构成底部 `tabBar`（选中色 `#07c05f`，每项带普通 / 选中两套图标）。tab 文案默认为中文，运行时按语言切换：
+`miniprogram/app.json` 中注册了 3 个页面，且三者同时构成底部 `tabBar`（选中色 `#0660f3`，每项带普通 / 选中两套图标）。tab 文案默认为中文，运行时按语言切换：
 
 | 页面路径 | tabBar 文案（中文 / English） | 功能 |
 | --- | --- | --- |

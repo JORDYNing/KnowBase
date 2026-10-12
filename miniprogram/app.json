@@ -6,13 +6,13 @@
   ],
   "window": {
     "navigationBarTitleText": "Gamelib",
-    "navigationBarBackgroundColor": "#0d3b2a",
+    "navigationBarBackgroundColor": "#021f58",
     "navigationBarTextStyle": "white",
     "backgroundColor": "#f3f3f3"
   },
   "tabBar": {
     "color": "#8b8b8b",
-    "selectedColor": "#07c05f",
+    "selectedColor": "#0660f3",
     "backgroundColor": "#ffffff",
     "borderStyle": "white",
     "list": [

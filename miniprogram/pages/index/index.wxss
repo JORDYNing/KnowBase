@@ -1,5 +1,5 @@
 .hero {
-  background: linear-gradient(135deg, #0d3b2a 0%, #05a04f 54%, #07c05f 100%);
+  background: linear-gradient(135deg, #021f58 0%, #0552d4 54%, #0660f3 100%);
   color: #ffffff;
 }
 
@@ -14,10 +14,10 @@
 .notice {
   box-sizing: border-box;
   padding: 24rpx;
-  border: 1rpx solid #d0f2de;
+  border: 1rpx solid #b8d4ff;
   border-radius: 18rpx;
-  background: #e9f8ec;
-  color: #1f5a3f;
+  background: #e7f0fe;
+  color: #021f58;
   font-size: 26rpx;
   line-height: 1.5;
 }
@@ -49,14 +49,14 @@
 }
 
 .knowledge-item.active {
-  border-color: #07c05f;
-  background: #e9f8ec;
-  color: #05a04f;
+  border-color: #0660f3;
+  background: #e7f0fe;
+  color: #0552d4;
   font-weight: 600;
 }
 
 .secondary {
   background: #ffffff;
-  color: #07c05f;
-  border: 1rpx solid #b8ebcc;
+  color: #0660f3;
+  border: 1rpx solid #a8c7f7;
 }

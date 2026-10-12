@@ -64,7 +64,7 @@ textarea {
 button {
   margin-top: 24rpx;
   border-radius: 18rpx;
-  background: #07c05f;
+  background: #0660f3;
   color: #ffffff;
   font-weight: 700;
 }

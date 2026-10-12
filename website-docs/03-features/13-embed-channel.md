@@ -25,7 +25,7 @@
   data-channel="你的渠道UUID"
   data-token="em_你的publish_token"
   data-position="bottom-right"
-  data-primary-color="#07C05F"
+  data-primary-color="#0660F3"
   data-title="AI Assistant"
 ></script>
 ```
@@ -60,7 +60,7 @@ publish token 只保存在业务后端，页面通过 `data-token-endpoint` 指�
     channel: '渠道UUID',
     tokenEndpoint: 'https://your-backend.example.com/weknora/embed-token', // 或 token: 'em_...'
     position: 'bottom-right',
-    primaryColor: '#07C05F',
+    primaryColor: '#0660F3',
     title: 'AI Assistant',
     baseUrl: 'https://your-weknora.example.com',
   });

@@ -650,7 +650,8 @@ const handleFeishuLogin = () => {
     if (inviteToken.value) {
       sessionStorage.setItem('weknora_pending_invite_token', inviteToken.value)
     }
-    window.location.href = '/api/v1/auth/feishu/start'
+    const origin = encodeURIComponent(window.location.origin)
+    window.location.href = `/api/v1/auth/feishu/start?return_origin=${origin}`
   } catch (error: any) {
     console.error('飞书登录跳转失败:', error)
     MessagePlugin.error(error.message || t('auth.feishuLoginFailed'))
@@ -849,7 +850,7 @@ onMounted(async () => {
   min-height: 100%;
   overflow: hidden;
   position: relative;
-  background: linear-gradient(225deg, #022c22 0%, #064e3b 15%, #065f46 25%, #047857 38%, #059669 50%, #07C05F 65%, #10B981 78%, #34D399 90%, #6EE7B7 100%);
+  background: linear-gradient(225deg, #01143a 0%, #021f58 15%, #022c77 25%, #033996 38%, #0446b5 50%, #0660F3 65%, #2B7CFF 78%, #4D97FF 90%, #A8C7F7 100%);
 
   &::before {
     content: '';
@@ -1317,7 +1318,7 @@ onMounted(async () => {
   }
 
   .check-icon {
-    color: var(--td-success-color);
+    color: var(--td-brand-color);
     font-weight: 700;
     font-size: var(--app-text-base);
     flex-shrink: 0;
@@ -1328,7 +1329,7 @@ onMounted(async () => {
   }
 
   &.active {
-    background: var(--td-success-color-light);
+    background: var(--td-brand-color-light);
     color: var(--td-brand-color-active);
   }
 }
@@ -1418,7 +1419,7 @@ onMounted(async () => {
   margin: 10px 0 0;
   padding: 8px 12px;
   border-radius: var(--app-radius-md);
-  background: var(--td-success-color-light);
+  background: var(--td-brand-color-light);
   color: var(--td-brand-color-active);
   font-size: 12.5px;
   line-height: 1.5;
@@ -1466,7 +1467,7 @@ onMounted(async () => {
     &:hover {
       border-color: var(--td-brand-color-active);
       color: var(--td-brand-color-active);
-      background: var(--td-success-color-light);
+      background: var(--td-brand-color-light);
     }
   }
 }
@@ -1627,7 +1628,7 @@ onMounted(async () => {
       width: 20px;
       height: 20px;
       border-radius: 50%;
-      background: var(--td-success-color-light);
+      background: var(--td-brand-color-light);
       color: var(--td-brand-color-active);
       display: flex;
       align-items: center;
@@ -1894,7 +1895,7 @@ html[theme-mode="dark"] {
   }
 
   .login-features .feature-icon {
-    background: rgba(6, 176, 77, 0.15);
+    background: color-mix(in srgb, var(--td-brand-color) 15%, transparent);
   }
 }
 </style>
