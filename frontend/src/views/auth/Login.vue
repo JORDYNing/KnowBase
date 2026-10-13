@@ -177,39 +177,41 @@
           <div class="form-header">
             <h2 class="form-title">{{ $t('auth.login') }}</h2>
             <p class="form-welcome">{{ $t('auth.subtitle') }}</p>
-            <p v-if="registrationEnabled" class="form-hint">{{ $t('auth.loginHint') }}</p>
+            <p v-if="showLocalAuthEntry && registrationEnabled" class="form-hint">{{ $t('auth.loginHint') }}</p>
           </div>
 
           <div class="form-content">
             <t-form ref="formRef" :data="formData" :rules="formRules" @submit="handleLogin" layout="vertical"
               label-align="top">
-              <t-form-item :label="$t('auth.email')" name="email">
-                <t-input v-model="formData.email" :placeholder="$t('auth.emailPlaceholder')" type="text"
-                  autocomplete="email" size="large" :disabled="loading" />
-              </t-form-item>
+              <template v-if="showLocalAuthEntry">
+                <t-form-item :label="$t('auth.email')" name="email">
+                  <t-input v-model="formData.email" :placeholder="$t('auth.emailPlaceholder')" type="text"
+                    autocomplete="email" size="large" :disabled="loading" />
+                </t-form-item>
 
-              <t-form-item :label="$t('auth.password')" name="password">
-                <t-input v-model="formData.password" :placeholder="$t('auth.passwordPlaceholder')" type="password"
-                  autocomplete="current-password" size="large" :disabled="loading" @enter="handleLogin" />
-              </t-form-item>
+                <t-form-item :label="$t('auth.password')" name="password">
+                  <t-input v-model="formData.password" :placeholder="$t('auth.passwordPlaceholder')" type="password"
+                    autocomplete="current-password" size="large" :disabled="loading" @enter="handleLogin" />
+                </t-form-item>
 
-              <t-button type="submit" theme="primary" size="large" block :loading="loading" class="submit-button">
-                {{ loading ? $t('auth.loggingIn') : $t('auth.login') }}
-              </t-button>
-
-              <div class="register-cta" v-if="registrationEnabled">
-                <div class="register-cta__divider">
-                  <span>{{ $t('auth.firstTime') }}</span>
-                </div>
-                <t-button theme="default" variant="outline" size="large" block class="register-cta__button"
-                  :disabled="loading" @click="toggleMode">
-                  {{ $t('auth.createAccount') }}
+                <t-button type="submit" theme="primary" size="large" block :loading="loading" class="submit-button">
+                  {{ loading ? $t('auth.loggingIn') : $t('auth.login') }}
                 </t-button>
-              </div>
 
-              <div v-if="oidcEnabled || feishuEnabled" class="oidc-divider">
-                <span>{{ $t('auth.orContinueWith') }}</span>
-              </div>
+                <div class="register-cta" v-if="registrationEnabled">
+                  <div class="register-cta__divider">
+                    <span>{{ $t('auth.firstTime') }}</span>
+                  </div>
+                  <t-button theme="default" variant="outline" size="large" block class="register-cta__button"
+                    :disabled="loading" @click="toggleMode">
+                    {{ $t('auth.createAccount') }}
+                  </t-button>
+                </div>
+
+                <div v-if="oidcEnabled || feishuEnabled" class="oidc-divider">
+                  <span>{{ $t('auth.orContinueWith') }}</span>
+                </div>
+              </template>
 
               <t-button v-if="oidcEnabled" theme="default" size="large" block :loading="oidcLoading" :disabled="loading || feishuLoading"
                 class="oidc-button" @click="handleOIDCLogin">
@@ -241,7 +243,7 @@
         </div>
 
         <!-- Registration must be allowed for this mode and invitation. -->
-        <div class="form-card" v-if="isRegisterMode && registrationEnabled">
+        <div class="form-card" v-if="showLocalAuthEntry && isRegisterMode && registrationEnabled">
           <!-- Share-link banner: shown only when ?token= resolved to a
                real invitation row. Sits above the form header so the
                invitee instantly sees who invited them and into which
@@ -404,6 +406,9 @@ const showLanguageMenu = ref(false)
 const oidcEnabled = ref(false)
 const feishuEnabled = ref(false)
 const oidcProviderName = ref('')
+// Local email/password login + self-serve register UI. Keep false to
+// surface only SSO (OIDC / Feishu); flip to true to restore the forms.
+const showLocalAuthEntry = false
 // Wait for configuration before showing a registration entry.
 const registrationMode = ref('')
 const registrationEnabled = computed(() => canRegister(registrationMode.value, !!inviteLookup.value))
@@ -494,6 +499,10 @@ const registerRules = computed(() => ({
 
 // Toggle login/register mode
 const toggleMode = () => {
+  if (!showLocalAuthEntry) {
+    isRegisterMode.value = false
+    return
+  }
   isRegisterMode.value = !isRegisterMode.value && registrationEnabled.value
 
   Object.keys(registerData).forEach(key => {
@@ -680,6 +689,7 @@ const acceptAndEnter = async (token: string) => {
 
 // Handle login
 const handleLogin = async () => {
+  if (!showLocalAuthEntry) return
   try {
     const valid = await formRef.value?.validate()
     if (valid !== true) return
@@ -716,7 +726,7 @@ const handleLogin = async () => {
 // login on success); without -> the normal self-service register
 // (drops back to the login form for the user to sign in).
 const handleRegister = async () => {
-  if (!registrationEnabled.value) return
+  if (!showLocalAuthEntry || !registrationEnabled.value) return
   try {
     const valid = await registerFormRef.value?.validate()
     if (valid !== true) return
@@ -813,8 +823,10 @@ onMounted(async () => {
     }
 
     // 3. Only enabled registration modes may create an invited account.
+    // Local password registration is hidden; stay on the SSO login card
+    // and keep the invite banner so users can continue with Feishu/OIDC.
     await loadAuthConfig()
-    isRegisterMode.value = registrationEnabled.value
+    isRegisterMode.value = showLocalAuthEntry && registrationEnabled.value
     loadOIDCConfig()
     loadFeishuConfig()
     return
