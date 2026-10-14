@@ -765,7 +765,6 @@ import type { FormRules, FormInstanceFunctions } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useOrganizationStore } from '@/stores/organization'
 import { useChatResourcesStore } from '@/stores/chatResources'
 import {
   listFAQEntries,
@@ -834,7 +833,6 @@ const confirmDelete = useConfirmDelete()
 const router = useRouter()
 const uiStore = useUIStore()
 const authStore = useAuthStore()
-const orgStore = useOrganizationStore()
 const chatResources = useChatResourcesStore()
 
 // Permission control: check if current user owns this KB or has edit/manage permission.
@@ -854,40 +852,8 @@ const isOwner = computed(() => {
   return creatorId === userId
 })
 
-// Current KB's shared record (when accessed via organization share)
-const currentSharedKb = computed(() =>
-  orgStore.sharedKnowledgeBases.find((s) => s.knowledge_base?.id === props.kbId) ?? null,
-)
-
-// Accessed via organization share: presence in the sharedKnowledgeBases list
-// means we reached this KB through a shared space, so the user's local tenant
-// role is irrelevant — only the share grant counts. tenant_id comparison
-// alone is unreliable (a user can be a member of both source and receiving
-// tenants); share-list presence is the authoritative signal.
-const isViaShare = computed(() => !!currentSharedKb.value)
-
-// Can edit: when accessed via an organization share, ONLY the share grant
-// counts — even if the current user happens to be the original creator of
-// the KB. The backend's RBAC middleware authorizes based on the active
-// tenant, not on creator_id, so a creator viewing their own KB from a
-// different tenant context will be 403'd on write. Otherwise: KB creator
-// (any role) or tenant Admin+ in the home tenant.
-const canEdit = computed(() => {
-  if (isViaShare.value) return orgStore.canEditKB(props.kbId, false)
-  if (isOwner.value) return true
-  if (authStore.hasRole('admin')) return true
-  return orgStore.canEditKB(props.kbId, false)
-})
-
-// Can manage (delete, settings, share): same isViaShare-first rule. For
-// shared KBs only an 'admin' share grant qualifies — editor/viewer (and
-// even being the creator viewed via share) never grant delete/settings.
-const canManage = computed(() => {
-  if (isViaShare.value) return orgStore.canManageKB(props.kbId, false)
-  if (isOwner.value) return true
-  if (authStore.hasRole('admin')) return true
-  return orgStore.canManageKB(props.kbId, false)
-})
+const canEdit = computed(() => isOwner.value || authStore.hasRole('admin'))
+const canManage = computed(() => isOwner.value || authStore.hasRole('admin'))
 
 const canSelectEntries = computed(() => canEdit.value || canManage.value)
 
@@ -1017,20 +983,7 @@ const loadKnowledgeList = async () => {
       type: item.type,
     }))
 
-    // Also include shared knowledge bases from orgStore
-    const sharedKbs: typeof knowledgeList.value = (orgStore.sharedKnowledgeBases || [])
-      .filter(s => s.knowledge_base != null)
-      .map(s => ({
-        id: String(s.knowledge_base.id),
-        name: s.knowledge_base.name,
-        type: s.knowledge_base.type,
-      }))
-
-    // Merge and deduplicate by id (my KBs take precedence)
-    const myKbIds = new Set(myKbs.map(kb => kb.id))
-    const uniqueSharedKbs = sharedKbs.filter(kb => !myKbIds.has(kb.id))
-
-    knowledgeList.value = [...myKbs, ...uniqueSharedKbs]
+    knowledgeList.value = myKbs
   } catch (error) {
     console.error('Failed to load knowledge bases:', error)
   }
@@ -2588,8 +2541,6 @@ const handleResize = () => {
 }
 
 onMounted(async () => {
-  // Ensure shared knowledge bases are loaded before loading the knowledge list
-  orgStore.fetchSharedKnowledgeBases()
   loadKnowledgeList()
   window.addEventListener('resize', handleResize)
   // 如果已有kbId，恢复导入任务状态

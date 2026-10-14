@@ -256,10 +256,6 @@ func SessionIDFromContext(ctx context.Context) (string, bool) {
 	return v, ok && v != ""
 }
 
-// WithSandboxTenantID records the session-owner tenant that session→sandbox
-// bindings must be keyed by, independently of the tenant the rest of the
-// pipeline runs as. Callers set it wherever they swap TenantIDContextKey for a
-// shared agent's workspace.
 func WithSandboxTenantID(ctx context.Context, tenantID uint64) context.Context {
 	if tenantID == 0 {
 		return ctx

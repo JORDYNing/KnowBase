@@ -1,4 +1,4 @@
-// Command weknora is a CLI for Tencent WeKnora knowledge bases.
+// Command gamelib is a CLI for Tencent Gamelib knowledge bases.
 package main
 
 import (

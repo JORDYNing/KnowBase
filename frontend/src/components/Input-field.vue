@@ -15,7 +15,6 @@ import { listMCPServices, type MCPService } from '@/api/mcp-service';
 import { stopSession } from '@/api/chat';
 import type { SteerQueueItem } from '@/api/chat/steer';
 import { chatSubmitShortcut } from '@/utils/chatSubmitShortcut';
-import { useOrganizationStore } from '@/stores/organization';
 import KnowledgeBaseSelector from './KnowledgeBaseSelector.vue';
 import MentionSelector from './MentionSelector.vue';
 import AgentSelector from './AgentSelector.vue';
@@ -49,7 +48,6 @@ import {
   getAgentNotReadyReasonKeys,
   resolveAgentNotReadySection,
   resolveAgentNotReadyHighlight,
-  canLocallyConfigureAgent,
   type AgentNotReadyReasonKey,
 } from '@/utils/agent-readiness';
 import { formatLocalizedList } from '@/utils/format-list';
@@ -62,7 +60,6 @@ const router = useRouter();
 const settingsStore = useSettingsStore();
 const browserConnection = useBrowserConnectionStore();
 const uiStore = useUIStore();
-const orgStore = useOrganizationStore();
 const menuStore = useMenuStore();
 const chatResources = useChatResourcesStore();
 const editorResources = useEditorResourcesStore();
@@ -168,66 +165,18 @@ const selectedAgentId = computed({
   get: () => settingsStore.selectedAgentId || BUILTIN_QUICK_ANSWER_ID,
   set: (val: string) => settingsStore.selectAgent(val)
 });
-const selectedAgent = computed(() => {
-  // When a shared-agent source tenant is set, resolve from sharedAgents FIRST.
-  // Builtin agents (e.g. builtin-smart-reasoning) use the same constant ID across
-  // tenants, so falling back to agents.value first would incorrectly return the
-  // current tenant's own builtin instead of the shared one.
-  const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
-  if (sourceTenantId && orgStore.sharedAgents?.length) {
-    const shared = orgStore.sharedAgents.find(
-      s => s.agent.id === selectedAgentId.value && String(s.source_tenant_id) === sourceTenantId
-    );
-    if (shared?.agent) return shared.agent as CustomAgent;
-  }
-  const mine = agents.value.find(a => a.id === selectedAgentId.value);
-  if (mine) return mine;
-  return {
-    id: BUILTIN_QUICK_ANSWER_ID,
-    name: t('input.normalMode'),
-    is_builtin: true,
-    config: { agent_mode: 'quick-answer' as const }
-  } as CustomAgent;
-});
-const selectedSharedAgent = computed(() => {
-  const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
-  if (!sourceTenantId) return undefined;
-  return orgStore.sharedAgents?.find(
-    s => s.agent.id === selectedAgentId.value && String(s.source_tenant_id) === sourceTenantId
-  );
-});
+const selectedAgent = computed(() => agents.value.find(agent => agent.id === selectedAgentId.value) || { id: BUILTIN_QUICK_ANSWER_ID, name: t('input.normalMode'), is_builtin: true, config: { agent_mode: 'quick-answer' } } as CustomAgent)
+
 
 // 判断是否为自定义智能体（非内置）
 const isCustomAgent = computed(() => {
   const agent = selectedAgent.value;
   return agent && !agent.is_builtin;
 });
+const hasAgentConfig = computed(() => { const agent = selectedAgent.value; if (agent?.is_builtin) return !!agents.value.find(a => a.id === agent.id)?.config; return !!agent?.config })
 
-// 判断是否有智能体配置（包括内置智能体）
-const hasAgentConfig = computed(() => {
-  const agent = selectedAgent.value;
-  // 共享智能体的 config 来自源空间，直接使用 agent.config，避免被本空间同 ID 的 builtin 覆盖
-  const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
-  if (agent?.is_builtin && !sourceTenantId) {
-    const builtinAgent = agents.value.find(a => a.id === agent.id);
-    return !!builtinAgent?.config;
-  }
-  return !!agent?.config;
-});
+const currentAgentConfig = computed(() => { const agent = selectedAgent.value; return agent?.is_builtin ? agents.value.find(a => a.id === agent.id)?.config || {} : agent?.config || {} })
 
-// 获取当前智能体的实际配置（内置智能体从 agents 列表获取）
-const currentAgentConfig = computed(() => {
-  const agent = selectedAgent.value;
-  // For shared agents, agent.config already carries the source tenant's settings.
-  // Re-looking it up by ID in the local agents.value would clobber it with the
-  // current tenant's own builtin config (same constant ID for builtins).
-  const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
-  if (agent?.is_builtin && !sourceTenantId) {
-    const builtinAgent = agents.value.find(a => a.id === agent.id);
-    return builtinAgent?.config || {};
-  }
-  return agent?.config || {};
-});
 
 // 智能体预配置的知识库 IDs
 const agentKnowledgeBases = computed(() => {
@@ -241,11 +190,7 @@ const agentKBSelectionMode = computed(() => {
   return currentAgentConfig.value?.kb_selection_mode || 'all';
 });
 
-// 共享智能体下的知识库列表（来自 listKnowledgeBases(agent_id)），用于已选知识库展示与 org 角标
-const sharedAgentKbList = ref<Array<{ id: string; name: string; type?: string; knowledge_count?: number; chunk_count?: number }>>([]);
-
 // 当智能体改变时，模型、可@知识库列表均跟随新智能体配置；网络搜索由用户主动开启
-// 知识库：用新智能体配置的列表替换当前选中，使已选与可@列表一致（含共享智能体）
 watch([selectedAgentId, agentKnowledgeBases, agentKBSelectionMode], ([newAgentId, newAgentKbs, newKbMode], [oldAgentId]) => {
   if (settingsStore._isApplyingSessionState) return;
   if (newAgentId !== oldAgentId && oldAgentId !== undefined) {
@@ -263,26 +208,6 @@ watch([selectedAgentId, agentKnowledgeBases, agentKBSelectionMode], ([newAgentId
       uploadedImages.value.forEach(img => URL.revokeObjectURL(img.preview));
       uploadedImages.value = [];
     }
-  }
-}, { immediate: true });
-
-// 共享智能体时预取该智能体知识库列表，使已选标签在未打开 @ 时也能显示共享空间角标
-watch([selectedAgentId, () => settingsStore.selectedAgentSourceTenantId], async ([agentId, sourceTenantId]) => {
-  if (sourceTenantId && agentId) {
-    try {
-      const list = await chatResources.ensureAgentKnowledgeBases(agentId, sourceTenantId);
-      sharedAgentKbList.value = list.map((kb: any) => ({
-        id: kb.id,
-        name: kb.name,
-        type: kb.type || 'document',
-        knowledge_count: kb.knowledge_count,
-        chunk_count: kb.chunk_count
-      }));
-    } catch {
-      sharedAgentKbList.value = [];
-    }
-  } else {
-    sharedAgentKbList.value = [];
   }
 }, { immediate: true });
 
@@ -402,7 +327,6 @@ watch([selectedAgentId, agentMCPSelectionMode, agentSkillsSelectionMode], ([newA
 });
 
 // 从 KB 对象里抽能力位，优先用 backend 显式的 capabilities 字段；否则回退到 indexing_strategy，
-// 最后拿 kb.type === 'faq' 兜底。shared / owned / agent-scope 三路的 KB 响应结构一致。
 const kbToScopeCaps = (kb: any): Partial<ScopeCapabilities> => {
   if (kb?.capabilities) {
     return {
@@ -458,16 +382,12 @@ const isImageUploadEnabledByAgent = computed(() => {
 
 // Input 工具栏：仅当智能体已启用且搜索引擎可用时才显示
 const showWebSearchButton = computed(() => {
-  if (hasAgentConfig.value && settingsStore.selectedAgentSourceTenantId && !isWebSearchReadinessKnown.value) {
-    return false;
-  }
   if (!hasAgentConfig.value) {
     return isTenantWebSearchReady(webSearchProviders.value);
   }
   return isAgentWebSearchReady(
     currentAgentConfig.value,
     webSearchProviders.value,
-    selectedSharedAgent.value?.web_search_ready,
   );
 });
 const showImageUploadButton = computed(() => isImageUploadEnabledByAgent.value);
@@ -481,7 +401,6 @@ const isModelLockedByAgent = computed(() => {
 const showMention = ref(false);
 const mentionQuery = ref("");
 const mentionItems = ref<MentionItem[]>([]);
-/** 文件 ID -> 知识库 ID（用于批量查询时传 kb_id，支持共享知识库下的文档） */
 const fileIdToKbId = ref<Record<string, string>>({});
 const mcpServices = ref<MCPService[]>([]);
 const mentionActiveIndex = ref(0);
@@ -499,17 +418,6 @@ const mentionAllowedKbIds = ref<Set<string> | null>(null);
 const mentionLoading = ref(false);
 const mentionOffset = ref(0);
 const MENTION_PAGE_SIZE = 20;
-
-// 共享智能体时用于标识「共享空间」的展示名（组织名或共享者），供 @ 列表与已选标签显示角标
-const sharedAgentOrgName = computed(() => {
-  const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
-  const agentId = selectedAgentId.value;
-  if (!sourceTenantId || !agentId || !orgStore.sharedAgents?.length) return '';
-  const shared = orgStore.sharedAgents.find(
-    (s: any) => s.agent?.id === agentId && String(s.source_tenant_id) === sourceTenantId
-  );
-  return shared?.org_name || shared?.shared_by_username || '';
-});
 
 const props = defineProps({
   compact: {
@@ -564,36 +472,8 @@ const selectedSkillNames = computed(() => settingsStore.settings.selectedSkills 
 // 已就绪的知识库（来自空间级缓存）
 const knowledgeBases = computed(() => chatResources.validKnowledgeBases);
 const fileList = ref<Array<{ id: string; name: string }>>([]);
+const selectedKbs = computed(() => knowledgeBases.value.filter(kb => selectedKbIds.value.includes(kb.id)))
 
-// 选中的知识库：包含自己的 + 组织共享的 + 共享智能体下的（用于展示已选列表与 org 角标）
-const selectedKbs = computed(() => {
-  const own = knowledgeBases.value.filter(kb => selectedKbIds.value.includes(kb.id));
-  const sharedList = orgStore.sharedKnowledgeBases || [];
-  const sharedMapped = sharedList
-    .filter((s: any) => s.knowledge_base != null && selectedKbIds.value.includes(s.knowledge_base.id))
-    .map((s: any) => ({
-      id: s.knowledge_base.id,
-      name: s.knowledge_base.name,
-      type: s.knowledge_base.type || 'document',
-      knowledge_count: s.knowledge_base.knowledge_count,
-      chunk_count: s.knowledge_base.chunk_count,
-      org_name: s.org_name || ''
-    }));
-  const ownIds = new Set(own.map(kb => kb.id));
-  const sharedOnly = sharedMapped.filter((kb: any) => !ownIds.has(kb.id));
-  const sharedOnlyIds = new Set(sharedOnly.map((kb: any) => kb.id));
-  // 共享智能体下的知识库：从 sharedAgentKbList 中取在选中列表里的，并打上共享空间标识
-  const agentOrg = sharedAgentOrgName.value;
-  const sharedFromAgent = (sharedAgentKbList.value || []).filter(kb => selectedKbIds.value.includes(kb.id) && !ownIds.has(kb.id) && !sharedOnlyIds.has(kb.id)).map(kb => ({
-    id: kb.id,
-    name: kb.name,
-    type: kb.type || 'document',
-    knowledge_count: kb.knowledge_count,
-    chunk_count: kb.chunk_count,
-    org_name: agentOrg || ''
-  }));
-  return [...own, ...sharedOnly, ...sharedFromAgent];
-});
 
 const selectedFiles = computed(() => {
   // If we have file details in fileList, use them.
@@ -650,28 +530,7 @@ const allSelectedItems = computed(() => {
     isAgentConfigured: agentKbIds.includes(kb.id)
   }));
 
-  // 用户选择的文件（根据 fileIdToKbId + 共享列表/共享智能体补全 org_name，用于角标）
-  const sharedKbOrgMap: Record<string, string> = {};
-  (orgStore.sharedKnowledgeBases || []).forEach((s: any) => {
-    if (s.knowledge_base?.id != null && s.org_name) {
-      sharedKbOrgMap[String(s.knowledge_base.id)] = s.org_name;
-    }
-  });
-  if (sharedAgentOrgName.value) {
-    (sharedAgentKbList.value || []).forEach((kb) => {
-      sharedKbOrgMap[String(kb.id)] = sharedAgentOrgName.value;
-    });
-  }
-  const files = selectedFiles.value.map((f: { id: string; name: string }) => {
-    const kbId = fileIdToKbId.value[f.id];
-    const org_name = kbId ? sharedKbOrgMap[String(kbId)] || '' : '';
-    return {
-      ...f,
-      type: 'file' as const,
-      isAgentConfigured: false,
-      org_name
-    };
-  });
+  const files = selectedFiles.value.map(file => ({ ...file, type: 'file' as const, isAgentConfigured: false }));
 
   // 智能体配置的放在前面
   const agentConfiguredKbs = allKbs.filter(kb => kb.isAgentConfigured);
@@ -732,40 +591,8 @@ const modelDropdownStyle = ref<Record<string, string>>({});
 // 显示的知识库标签（最多显示2个）
 const displayedKbs = computed(() => selectedKbs.value.slice(0, 2));
 const remainingCount = computed(() => Math.max(0, selectedKbs.value.length - 2));
+const loadKnowledgeBases = async (force = false) => { try { await chatResources.ensureKnowledgeBases(force); const validIds = new Set(knowledgeBases.value.map(kb => kb.id)); const current = settingsStore.settings.selectedKnowledgeBases || []; const valid = current.filter(id => validIds.has(id)); if (valid.length !== current.length) settingsStore.selectKnowledgeBases(valid); } catch (error) { console.error('Failed to load knowledge bases:', error) } }
 
-// 加载知识库列表（自己的 + 共享的，用于 @ 提及等）
-const loadKnowledgeBases = async (force = false) => {
-  try {
-    await chatResources.ensureKnowledgeBases(force);
-    const validKbs = knowledgeBases.value;
-
-    const validKbIds = new Set(validKbs.map((kb: any) => kb.id));
-    const sharedKbIds = new Set(
-      (orgStore.sharedKnowledgeBases || []).map((s: any) => s.knowledge_base?.id).filter(Boolean)
-    );
-    let sharedAgentKbIdSet = new Set<string>();
-    const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
-    const agentId = settingsStore.selectedAgentId;
-    if (sourceTenantId && agentId) {
-      try {
-        const list = await chatResources.ensureAgentKnowledgeBases(agentId, sourceTenantId, force);
-        list.forEach((kb: any) => kb?.id && sharedAgentKbIdSet.add(kb.id));
-      } catch {
-        sharedAgentKbIdSet = new Set();
-      }
-    }
-    const currentSelectedIds = settingsStore.settings.selectedKnowledgeBases || [];
-    const validSelectedIds = currentSelectedIds.filter(
-      (id: string) => validKbIds.has(id) || sharedKbIds.has(id) || sharedAgentKbIdSet.has(id)
-    );
-
-    if (validSelectedIds.length !== currentSelectedIds.length) {
-      settingsStore.selectKnowledgeBases(validSelectedIds);
-    }
-  } catch (error) {
-    console.error('Failed to load knowledge bases:', error);
-  }
-};
 
 const loadFiles = async () => {
   const ids = selectedFileIds.value;
@@ -775,7 +602,6 @@ const loadFiles = async () => {
   if (missingIds.length === 0) return;
 
   try {
-    // 按 kb_id 分组：共享知识库下的文档需带 kb_id 才能正确查询
     const byKbId = new Map<string, string[]>();
     const noKbId: string[] = [];
     missingIds.forEach((id: string) => {
@@ -789,12 +615,10 @@ const loadFiles = async () => {
     });
 
     const allNewFiles: Array<{ id: string; name: string }> = [];
-    const agentIdForBatch = settingsStore.selectedAgentSourceTenantId ? settingsStore.selectedAgentId : undefined;
-    const runBatch = async (batchIds: string[], kbId?: string, agentId?: string) => {
+    const runBatch = async (batchIds: string[], kbId?: string) => {
       const query = new URLSearchParams();
       batchIds.forEach((id: string) => query.append('ids', id));
-      const sourceTenantId = agentId ? settingsStore.selectedAgentSourceTenantId ?? undefined : undefined;
-      const res: any = await batchQueryKnowledge(query.toString(), kbId, agentId, sourceTenantId);
+      const res: any = await batchQueryKnowledge(query.toString(), kbId);
       if (res.data && Array.isArray(res.data)) {
         res.data.forEach((f: any) => allNewFiles.push({ id: f.id, name: f.title || f.file_name }));
       }
@@ -804,7 +628,7 @@ const loadFiles = async () => {
       await runBatch(batchIds, kbId);
     }
     if (noKbId.length > 0) {
-      await runBatch(noKbId, undefined, agentIdForBatch);
+      await runBatch(noKbId);
     }
     if (allNewFiles.length > 0) {
       fileList.value = [...fileList.value, ...allNewFiles];
@@ -813,41 +637,8 @@ const loadFiles = async () => {
     console.error("Failed to load files", e);
   }
 };
+const loadMCPServices = async () => { try { mcpServices.value = await listMCPServices() } catch (error) { console.error('Failed to load MCP services:', error); mcpServices.value = [] } }
 
-// A shared agent @mentions its OWNER's MCP services; this workspace's service
-// ids match none of its preset, and the backend drops such a mention outright.
-// So the list follows the selected agent and is refetched when it changes.
-const currentAgentScope = computed(() => {
-  const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
-  if (!sourceTenantId || !selectedAgentId.value) return undefined;
-  return { agentId: selectedAgentId.value, sourceTenantId };
-});
-
-const agentScopeKey = (scope?: { agentId: string; sourceTenantId: string | number }) =>
-  scope ? `${scope.sourceTenantId}:${scope.agentId}` : '';
-
-// Guards against a slow response for a previously selected agent overwriting
-// the list with another workspace's services after the user switched away.
-let mcpServicesRequestKey = '';
-
-const loadMCPServices = async () => {
-  const scope = currentAgentScope.value;
-  const requestKey = agentScopeKey(scope);
-  mcpServicesRequestKey = requestKey;
-  try {
-    const list = await listMCPServices(scope);
-    if (mcpServicesRequestKey !== requestKey) return;
-    mcpServices.value = list;
-  } catch (error) {
-    console.error('Failed to load MCP services:', error);
-    if (mcpServicesRequestKey !== requestKey) return;
-    mcpServices.value = [];
-  }
-};
-
-watch(currentAgentScope, () => {
-  void loadMCPServices();
-});
 
 watch(selectedFileIds, () => {
   loadFiles();
@@ -858,14 +649,11 @@ const isWebSearchConfigured = computed(() => {
     return isAgentWebSearchReady(
       currentAgentConfig.value,
       webSearchProviders.value,
-      selectedSharedAgent.value?.web_search_ready,
     );
   }
   return isTenantWebSearchReady(webSearchProviders.value);
 });
-const isWebSearchReadinessKnown = computed(
-  () => !settingsStore.selectedAgentSourceTenantId || selectedSharedAgent.value !== undefined
-);
+
 
 const browserSourceUnavailableHint = computed(() => {
   if (!browserConnection.enabled) return 'localBrowser.unavailable';
@@ -892,19 +680,19 @@ const loadWebSearchConfig = async (force = false) => {
   try {
     await chatResources.ensureWebSearchProviders(force);
 
-    if (isWebSearchReadinessKnown.value && !isWebSearchConfigured.value && settingsStore.isWebSearchEnabled) {
+    if (!isWebSearchConfigured.value && settingsStore.isWebSearchEnabled) {
       settingsStore.toggleWebSearch(false);
     }
   } catch (error) {
     console.error('Failed to load web search config:', error);
     chatResources.invalidate('webSearchProviders');
-    if (!settingsStore.selectedAgentSourceTenantId && settingsStore.isWebSearchEnabled) {
+    if (settingsStore.isWebSearchEnabled) {
       settingsStore.toggleWebSearch(false);
     }
   }
 };
 
-// 加载智能体列表（我的 + 共享，供选中态与就绪检查用）
+// 加载智能体列表（供选中态与就绪检查用）
 const loadAgents = async (force = false) => {
   try {
     await chatResources.ensureAgents(force);
@@ -916,11 +704,9 @@ const loadAgents = async (force = false) => {
 
 // 默认选中的 builtin（builtin-quick-answer）也可能被当前空间管理员停用。
 // 列表加载完后做一次纠偏：若当前选中的是本空间停用的 agent（仅限「我的/builtin」，
-// 共享智能体由源空间决定，本地停用列表不适用），按 智能推理 → 快速问答 →
 // 第一个可用 的顺序兜底切换。全部都被停用时保持原选择不动（极端场景，UI 仍会
 // 在 enabledAgents 过滤后显示空，由用户在智能体页恢复任意一个）。
 const ensureSelectedAgentNotDisabled = () => {
-  if (settingsStore.selectedAgentSourceTenantId) return
   const currentId = settingsStore.selectedAgentId || BUILTIN_QUICK_ANSWER_ID
   if (!disabledOwnAgentIds.value.includes(currentId)) return
 
@@ -1030,23 +816,19 @@ const ensureModelSelection = () => {
 
 // 智能体身份或其数据到位时，把对话模型同步到智能体配置的 model_id。
 // 修复场景：导航离开再返回时，initChatModelSelection 会用 localStorage 的 lastPick
-// 覆盖共享智能体绑定的源空间 model_id，UI 显示「未配置」——此时需要拉回 agent 模型。
 // 但若用户在本页手动改过模型（lastPick 与 agent 默认不同且当前选中即为 lastPick），
 // 则保留用户选择，避免 creatChat → chat 跳转后把模型 B 冲回智能体默认 A。
 watch(
-  [selectedAgentId, () => settingsStore.selectedAgentSourceTenantId, agentModelId],
-  ([, sourceTenantId, newModelId]) => {
+  [selectedAgentId, agentModelId],
+  ([, newModelId]) => {
     if (!newModelId || newModelId.trim() === '') return;
 
     const lastPick = readLastChatModelID();
-    const isSharedAgent = !!sourceTenantId;
-    const agentModelInList = availableModels.value.some(m => m.id === newModelId);
 
     if (
       lastPick &&
       selectedModelId.value === lastPick &&
-      lastPick !== newModelId &&
-      (!isSharedAgent || agentModelInList)
+      lastPick !== newModelId
     ) {
       return;
     }
@@ -1124,16 +906,9 @@ watch([selectedModel, reasoningLevels, () => settingsStore.reasoningEffortOverri
     settingsStore.reasoningEffortOverride = '';
   }
 }, { immediate: true, flush: 'sync' });
+// 模型展示名
+const selectedModelDisplayName = computed(() => selectedModel.value ? modelDisplayName(selectedModel.value) : t('input.notConfigured'))
 
-// 模型展示名：本空间列表中有则用名称；若为共享智能体且其 model_id 不在本空间列表中则显示“共享智能体配置的模型”
-const selectedModelDisplayName = computed(() => {
-  if (selectedModel.value) return modelDisplayName(selectedModel.value);
-  if (!selectedModelId.value) return t('input.notConfigured');
-  const isSharedAgent = !!settingsStore.selectedAgentSourceTenantId;
-  const modelFromAgent = agentModelId.value && agentModelId.value === selectedModelId.value;
-  if (isSharedAgent && modelFromAgent) return t('input.sharedAgentModelLabel');
-  return t('input.notConfigured');
-});
 
 const modelDisplayName = (model: ModelConfig) => {
   const displayName = model.display_name?.trim();
@@ -1279,78 +1054,20 @@ const loadMentionItems = async (q: string, resetIndex = true, append = false) =>
     mentionOffset.value = 0;
   }
 
-  // 根据智能体的 kb_selection_mode 过滤知识库；选中共享智能体时使用该空间下的知识库，否则使用本空间 + 共享给自己的
   let kbItems: any[] = [];
   let tagItems: MentionItem[] = [];
   let mcpItems: MentionItem[] = [];
   let skillItems: MentionItem[] = [];
   if (!append) {
-    let availableKbs: any[];
-    const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
-    const agentId = selectedAgentId.value;
-    if (sourceTenantId && agentId) {
-      // 共享智能体：按 agent_id 拉取该智能体配置的知识库范围（后端从共享关系解析空间）
-      try {
-        const list = await chatResources.ensureAgentKnowledgeBases(agentId, sourceTenantId);
-        const orgLabel = sharedAgentOrgName.value || '';
-        // 保留 capabilities / indexing_strategy，后面过滤时要用
-        availableKbs = list.map((kb: any) => ({
-          id: kb.id,
-          name: kb.name,
-          type: kb.type || 'document',
-          knowledge_count: kb.knowledge_count,
-          chunk_count: kb.chunk_count,
-          org_name: orgLabel,
-          capabilities: kb.capabilities,
-          indexing_strategy: kb.indexing_strategy,
-        }));
-        sharedAgentKbList.value = list.map((kb: any) => ({
-          id: kb.id,
-          name: kb.name,
-          type: kb.type || 'document',
-          knowledge_count: kb.knowledge_count,
-          chunk_count: kb.chunk_count
-        }));
-      } catch (e) {
-        console.error('[Mention] listKnowledgeBases(agent_id) error:', e);
-        availableKbs = [];
-        sharedAgentKbList.value = [];
-      }
-    } else {
-      sharedAgentKbList.value = [];
-      availableKbs = [...knowledgeBases.value];
-      const sharedList = orgStore.sharedKnowledgeBases || [];
-      const sharedKbsForMention = sharedList
-        .filter((s: any) => s.knowledge_base != null)
-        .map((s: any) => ({
-          id: s.knowledge_base.id,
-          name: s.knowledge_base.name,
-          type: s.knowledge_base.type || 'document',
-          knowledge_count: s.knowledge_base.knowledge_count,
-          chunk_count: s.knowledge_base.chunk_count,
-          org_name: s.org_name || '',
-          capabilities: s.knowledge_base.capabilities,
-          indexing_strategy: s.knowledge_base.indexing_strategy,
-        }));
-      const ownIds = new Set(availableKbs.map((kb: any) => kb.id));
-      sharedKbsForMention.forEach((kb: any) => {
-        if (!ownIds.has(kb.id)) {
-          availableKbs.push(kb);
-          ownIds.add(kb.id);
-        }
-      });
-    }
+    let availableKbs: any[] = [...knowledgeBases.value];
 
     if (hasAgentConfig.value) {
       const kbMode = agentKBSelectionMode.value;
-      // 共享智能体路径：`availableKbs` 已经来自 `listKnowledgeBases({agent_id})`,
       // 后端按 kb_selection_mode + allowed_tools 做过权威过滤；前端不再重复一遍。
-      // 本人智能体路径：走 own KBs + user-shared KBs 合并，后端拿不到 agent 上下文，
       // 所以 'selected' 要收敛到配置集合，'all' 要按工具派生的能力过滤。
-      const isSharedAgent = !!(sourceTenantId && agentId);
       if (kbMode === 'none') {
         availableKbs = [];
-      } else if (!isSharedAgent) {
+      } else {
         if (kbMode === 'selected') {
           // 'selected' 完全信任用户在编辑器里的勾选；编辑器已经用 kb_filter 灰显
           // 不兼容项，这里不再二次过滤，避免越权擦除用户明确的选择。
@@ -1389,7 +1106,6 @@ const loadMentionItems = async (q: string, resetIndex = true, append = false) =>
         type: 'kb' as const,
         kbType: kbType === 'faq' ? 'faq' as const : 'document' as const,
         count,
-        orgName: kb.org_name || sharedAgentOrgName.value || undefined
       };
     }));
     mentionGroupCounts.value.kb = kbItems.length;
@@ -1426,7 +1142,6 @@ const loadMentionItems = async (q: string, resetIndex = true, append = false) =>
 
     const skillsMode = agentSkillsSelectionMode.value;
     if (skillsMode !== 'none') {
-      // The scope makes a shared agent's skills resolve in its owner's
       // workspace, where they are actually installed. Lite agents store no
       // sandbox config id; their skills live on the host target.
       await deploymentCapabilities.ensureLoaded();
@@ -1438,7 +1153,6 @@ const loadMentionItems = async (q: string, resetIndex = true, append = false) =>
           ),
           currentAgentConfig.value?.sandbox_config_id,
         ),
-        currentAgentScope.value,
       );
       skillItems = editorResources.skills
         .filter(skill => isSkillAllowedByAgent(skill.name))
@@ -1475,10 +1189,9 @@ const loadMentionItems = async (q: string, resetIndex = true, append = false) =>
     mentionLoading.value = true;
     try {
       const fileTypesParam = agentSupportedFileTypes.value.length > 0 ? agentSupportedFileTypes.value : undefined;
-      const sourceTenantId = settingsStore.selectedAgentSourceTenantId;
       const agentId = selectedAgentId.value;
       const searchOptions = {
-        ...(sourceTenantId && agentId ? { agent_id: agentId, agent_source_tenant_id: sourceTenantId } : {}),
+        ...(hasAgentConfig.value && agentId ? { agent_id: agentId } : {}),
         recent: !fileSearchKeyword,
       };
       const res: any = await searchKnowledge(
@@ -1495,9 +1208,8 @@ const loadMentionItems = async (q: string, resetIndex = true, append = false) =>
         const apiPageSize = res.data.length;
         // 按当前 @ 会话的兼容 KB 集合过滤：
         //   - 非智能体场景：`mentionAllowedKbIds` 为 null，跳过；
-        //   - 智能体场景（含 shared agent）：'selected' 会把 ID 收敛到用户勾的 KB，
         //     'all' 会收敛到"兼容"的 KB，'none' 根本走不到这里（shouldLoadFiles=false）。
-        //   这样分页 append 也能用同一份集合，不再只兜住 'selected' + 非共享的分支。
+        //   这样分页 append 也能用同一份集合，不再只兜住 'selected' 分支。
         if (mentionAllowedKbIds.value) {
           const allowed = mentionAllowedKbIds.value;
           files = files.filter((f: any) => {
@@ -1505,24 +1217,15 @@ const loadMentionItems = async (q: string, resetIndex = true, append = false) =>
             return kbId != null && allowed.has(String(kbId));
           });
         }
-        const sharedKbOrgMap: Record<string, string> = {};
-        (orgStore.sharedKnowledgeBases || []).forEach((s: any) => {
-          if (s.knowledge_base?.id != null && s.org_name) {
-            sharedKbOrgMap[String(s.knowledge_base.id)] = s.org_name;
-          }
-        });
-        const agentOrgLabel = sourceTenantId && agentId ? sharedAgentOrgName.value : '';
         fileItems = files.map((f: any) => {
           const kbId = f.knowledge_base_id ?? f.kb_id;
           const kbIdStr = kbId != null ? String(kbId) : '';
-          const fileOrgName = agentOrgLabel || (kbIdStr ? sharedKbOrgMap[kbIdStr] : undefined);
           return {
             id: f.id,
             name: f.title || f.file_name,
             type: 'file' as const,
             kbName: f.knowledge_base_name || '',
             kbId: kbId || undefined,
-            orgName: fileOrgName || undefined
           };
         });
         if (!append) {
@@ -1900,7 +1603,7 @@ onMounted(() => {
   ]);
   window.addEventListener(CHAT_FILE_DROP_EVENT, handleChatFileDrop as EventListener);
 
-  // 从持久化恢复 fileId -> kbId，刷新后共享知识库文件可带 kb_id 拉取（仅保留当前仍选中的文件）
+  // 从持久化恢复 fileId -> kbId，刷新后知识库文件可带 kb_id 拉取（仅保留当前仍选中的文件）
   const persisted = settingsStore.settings.selectedFileKbMap;
   const ids = settingsStore.settings.selectedFiles || [];
   if (persisted && typeof persisted === 'object' && ids.length > 0) {
@@ -2100,7 +1803,7 @@ const createSession = async (
   // 发送前校验当前选中的智能体（含默认快速问答）是否已配置完成
   const agentToCheck = selectedAgent.value;
   let actualAgent = agentToCheck;
-  if (agentToCheck.is_builtin && !settingsStore.selectedAgentSourceTenantId) {
+  if (agentToCheck.is_builtin) {
     let builtin = agents.value.find(a => a.id === selectedAgentId.value);
     if (!builtin) {
       await loadAgents();
@@ -2112,14 +1815,12 @@ const createSession = async (
   const { keys: notReadyKeys, labels: notReadyReasons } = collectAgentNotReadyReasons(
     actualAgent,
     isAgentMode,
-    settingsStore.selectedAgentSourceTenantId ?? undefined,
   );
   if (notReadyReasons.length > 0) {
     showAgentNotReadyMessage(
       actualAgent,
       notReadyReasons,
       notReadyKeys,
-      settingsStore.selectedAgentSourceTenantId ?? undefined,
     );
     return;
   }
@@ -2287,18 +1988,10 @@ const selectAgentMode = async (mode: 'quick-answer' | 'smart-reasoning') => {
   }
   showAgentModeSelector.value = false;
 }
+const handleAgentNotReady = (agent: CustomAgent, labels: string[], keys: AgentNotReadyReasonKey[]) => showAgentNotReadyMessage(agent, labels, keys)
 
-// 选择智能体（新版）；sourceTenantId 为共享智能体时传入
-const handleAgentNotReady = (
-  agent: CustomAgent,
-  labels: string[],
-  keys: AgentNotReadyReasonKey[],
-  sourceTenantId?: string,
-) => {
-  showAgentNotReadyMessage(agent, labels, keys, sourceTenantId);
-};
 
-const handleSelectAgent = async (agent: CustomAgent, sourceTenantId?: string) => {
+const handleSelectAgent = async (agent: CustomAgent) => {
   if (!chatResources.isLoaded('models')) {
     await loadChatModels()
   }
@@ -2307,26 +2000,24 @@ const handleSelectAgent = async (agent: CustomAgent, sourceTenantId?: string) =>
   const isAgentType = agent.config?.agent_mode === 'smart-reasoning';
 
   // 统一检查智能体是否就绪（内置和自定义智能体使用相同逻辑）
-  const actualAgent = agent.is_builtin && !sourceTenantId
+  const actualAgent = agent.is_builtin
     ? (agents.value.find(a => a.id === agent.id) || agent)
     : agent;
 
   const { keys: notReadyKeys, labels: notReadyReasons } = collectAgentNotReadyReasons(
     actualAgent,
     isAgentType,
-    sourceTenantId,
   );
 
   if (notReadyReasons.length > 0) {
     showAgentModeSelector.value = false;
-    showAgentNotReadyMessage(actualAgent, notReadyReasons, notReadyKeys, sourceTenantId);
+    showAgentNotReadyMessage(actualAgent, notReadyReasons, notReadyKeys);
     return;
   }
 
-  settingsStore.selectAgent(agent.id, sourceTenantId);
+  settingsStore.selectAgent(agent.id);
   settingsStore.toggleAgent(!!isAgentType);
 
-  // 同步模型（选中的对话模型随智能体切换，含共享智能体）。
   // 网络搜索已由 selectAgent 重置为关闭，智能体配置只控制该开关是否可用。
   const agentModel = agent.config?.model_id;
   if (agentModel && agentModel.trim() !== '') {
@@ -2505,83 +2196,19 @@ const formatAgentNotReadyReasons = (
     return t('input.agentMissingAllowedTools');
   });
 };
+const collectAgentNotReadyReasons = (agent: CustomAgent, isAgentMode: boolean): { keys: AgentNotReadyReasonKey[]; labels: string[] } => { const keys = getAgentNotReadyReasonKeys(agent.config, allModels.value, { isAgentMode }); return { keys, labels: formatAgentNotReadyReasons(keys, agent.is_builtin) } }
 
-const collectAgentNotReadyReasons = (
-  agent: CustomAgent,
-  isAgentMode: boolean,
-  sourceTenantId?: string,
-): { keys: AgentNotReadyReasonKey[]; labels: string[] } => {
-  const isSharedAgent = !!sourceTenantId;
-  const keys = getAgentNotReadyReasonKeys(agent.config, allModels.value, {
-    isAgentMode,
-    isSharedAgent,
-  });
-  return {
-    keys,
-    labels: formatAgentNotReadyReasons(keys, agent.is_builtin),
-  };
-};
+const goToAgentEditor = (agent: CustomAgent, section = 'model', highlight?: AgentNotReadyReasonKey) => { router.push({ path: '/platform/agents', query: { edit: agent.id, section, ...(highlight ? { highlight } : {}) } }) }
 
-const goToAgentEditor = (
-  agent: CustomAgent,
-  section = 'model',
-  highlight?: AgentNotReadyReasonKey,
-  sourceTenantId?: string,
-) => {
-  router.push({
-    path: '/platform/agents',
-    query: {
-      edit: agent.id,
-      section,
-      ...(highlight ? { highlight } : {}),
-      ...(sourceTenantId ? { sourceTenantId } : {}),
-    },
-  });
-};
-
-// 显示智能体未就绪的消息（统一处理内置和自定义智能体）
-const showAgentNotReadyMessage = (
-  agent: CustomAgent,
-  reasons: string[],
-  reasonKeys?: AgentNotReadyReasonKey[],
-  sourceTenantId?: string,
-) => {
+const showAgentNotReadyMessage = (agent: CustomAgent, reasons: string[], reasonKeys?: AgentNotReadyReasonKey[]) => {
   const reasonsText = formatLocalizedList(reasons, locale.value)
-  const isRemoteShared = !canLocallyConfigureAgent(sourceTenantId)
-
-  const messageContent = h('div', { style: 'display: flex; flex-direction: column; gap: 8px; max-width: 320px;' }, [
-    h(
-      'span',
-      { style: 'color: var(--td-text-color-primary); line-height: 1.5;' },
-      isRemoteShared
-        ? t('input.sharedAgentNotReadyDetail', { agentName: agent.name, reasons: reasonsText })
-        : t('input.agentNotReadyDetail', { agentName: agent.name, reasons: reasonsText }),
-    ),
-    ...(isRemoteShared ? [] : [
-      h('a', {
-        href: '#',
-        onClick: (e: Event) => {
-          e.preventDefault();
-          const section = resolveAgentNotReadySection(reasonKeys || ['summary_model'])
-          const highlight = resolveAgentNotReadyHighlight(reasonKeys || ['summary_model'])
-          goToAgentEditor(agent, section, highlight, sourceTenantId);
-        },
-        style: 'color: var(--td-brand-color); text-decoration: none; font-weight: 500; cursor: pointer; align-self: flex-start;',
-        onMouseenter: (e: Event) => {
-          (e.target as HTMLElement).style.textDecoration = 'underline';
-        },
-        onMouseleave: (e: Event) => {
-          (e.target as HTMLElement).style.textDecoration = 'none';
-        }
-      }, t('input.goToAgentEditor')),
-    ]),
-  ]);
-
-  MessagePlugin.warning({
-    content: () => messageContent,
-    duration: 5000
-  });
+  const messageContent = h('div', { style: 'display:flex;flex-direction:column;gap:8px;max-width:320px;' }, [
+    h('span', { style: 'color:var(--td-text-color-primary);line-height:1.5;' }, t('input.agentNotReadyDetail', { agentName: agent.name, reasons: reasonsText })),
+    h('a', { href: '#', onClick: (e: Event) => { e.preventDefault(); goToAgentEditor(agent, resolveAgentNotReadySection(reasonKeys || ['summary_model']), resolveAgentNotReadyHighlight(reasonKeys || ['summary_model'])) }, style: 'color:var(--td-brand-color);font-weight:500;' }, t('input.goToAgentEditor')),
+  ])
+  MessagePlugin.warning({ content: () => messageContent, duration: 5000 })
 }
+
 
 const toggleWebSearch = () => {
   // 互斥：虽然不是弹出层，但操作时关闭其他弹出层体验更好
@@ -2727,7 +2354,6 @@ defineExpose({
       <!-- 附件列表区域 (由 AttachmentUpload 组件渲染) -->
       <AttachmentUpload ref="attachmentUploadRef" :max-files="5"
         :session-id="sessionId" :agent-id="selectedAgentId"
-        :agent-source-tenant-id="settingsStore.selectedAgentSourceTenantId ?? undefined"
         @update:files="uploadedAttachments = $event" />
 
       <!-- 选中的知识库和文件标签（显示在输入框内顶部） -->
@@ -2736,15 +2362,12 @@ defineExpose({
           getMentionChipClass(item),
           { 'mention-chip--agent': item.isAgentConfigured }
         ]">
-          <span class="mention-chip__icon-wrap" :class="{ 'has-org': item.org_name }">
+          <span class="mention-chip__icon-wrap">
             <span class="mention-chip__icon">
               <t-icon v-if="item.type === 'kb'" :name="item.kbType === 'faq' ? 'chat-bubble-help' : 'folder'" />
               <t-icon v-else :name="getMentionIcon(item)" />
             </span>
-            <span v-if="item.org_name" class="mention-chip__org-badge">
-              <img :src="getImgSrc(item.type === 'file' ? 'organization-grey.svg' : 'organization-green.svg')"
-                class="mention-chip__org-img" alt="" aria-hidden="true" />
-            </span>
+
           </span>
           <span class="mention-chip__name" :title="item.name">{{ item.name }}</span>
           <span class="mention-chip__remove" @click.stop="removeSelectedItem(item)"
@@ -3019,11 +2642,6 @@ defineExpose({
     </Teleport>
   </div>
 </template>
-<script lang="ts">
-const getImgSrc = (url: string) => {
-  return new URL(`/src/assets/img/${url}`, import.meta.url).href;
-}
-</script>
 <style scoped lang="less">
 @import './css/chat-resource-chips.less';
 
@@ -3187,26 +2805,9 @@ const getImgSrc = (url: string) => {
   color: inherit;
 }
 
-.mention-chip__org-badge {
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--td-bg-color-secondarycontainer);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
 
-.mention-chip__org-img {
-  width: 5px;
-  height: 5px;
-  object-fit: contain;
-}
+
+
 
 .mention-chip__name {
   max-width: 100px;

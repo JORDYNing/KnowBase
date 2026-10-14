@@ -19,7 +19,7 @@ func TestDiscover_FoundInCwd(t *testing.T) {
 	if !found {
 		t.Fatalf("expected found=true")
 	}
-	want := filepath.Join(dir, ".weknora", "project.yaml")
+	want := filepath.Join(dir, ".gamelib", "project.yaml")
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -55,9 +55,35 @@ func TestDiscover_NotFound(t *testing.T) {
 	}
 }
 
+func TestDiscover_IgnoresOldLinkAndFindsNewParent(t *testing.T) {
+	root := t.TempDir()
+	child := filepath.Join(root, "child")
+	oldPath := filepath.Join(child, ".weknora", "project.yaml")
+	oldData := []byte("kb_id: old_kb\n")
+	if err := os.MkdirAll(filepath.Dir(oldPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldPath, oldData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, found, err := projectlink.Discover(child); err != nil || found {
+		t.Fatalf("old link must be ignored: path=%q found=%v err=%v", got, found, err)
+	}
+	mkLink(t, root)
+	got, found, err := projectlink.Discover(child)
+	want := filepath.Join(root, ".gamelib", "project.yaml")
+	if err != nil || !found || got != want {
+		t.Fatalf("new parent link must be discovered: path=%q found=%v err=%v", got, found, err)
+	}
+	preserved, err := os.ReadFile(oldPath)
+	if err != nil || string(preserved) != string(oldData) {
+		t.Fatalf("old link must remain untouched: data=%q err=%v", preserved, err)
+	}
+}
+
 func TestLoad_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, ".weknora", "project.yaml")
+	path := filepath.Join(dir, ".gamelib", "project.yaml")
 	in := &projectlink.Project{Profile: "prod", KBID: "kb_abc", CreatedAt: time.Now().UTC().Round(time.Second)}
 	if err := projectlink.Save(path, in); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -73,7 +99,7 @@ func TestLoad_RoundTrip(t *testing.T) {
 
 func TestLoad_Corrupt(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, ".weknora", "project.yaml")
+	path := filepath.Join(dir, ".gamelib", "project.yaml")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -88,12 +114,12 @@ func TestLoad_Corrupt(t *testing.T) {
 
 func TestSave_CreatesParent(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, ".weknora", "project.yaml")
+	path := filepath.Join(dir, ".gamelib", "project.yaml")
 	if err := projectlink.Save(path, &projectlink.Project{KBID: "kb_x"}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".weknora")); err != nil {
-		t.Errorf("parent .weknora not created: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, ".gamelib")); err != nil {
+		t.Errorf("parent .gamelib not created: %v", err)
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("file not created: %v", err)
@@ -102,7 +128,7 @@ func TestSave_CreatesParent(t *testing.T) {
 
 func mkLink(t *testing.T, dir string) {
 	t.Helper()
-	d := filepath.Join(dir, ".weknora")
+	d := filepath.Join(dir, ".gamelib")
 	if err := os.MkdirAll(d, 0o700); err != nil {
 		t.Fatal(err)
 	}

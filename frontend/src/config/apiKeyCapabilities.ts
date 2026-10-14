@@ -17,7 +17,7 @@ export const TENANT_API_KEY_CAPABILITIES: TenantAPIKeyCapability[] = [
   'message_history', 'manage_agents', 'manage_mcp_services',
   'manage_datasources', 'manage_models', 'manage_vector_stores',
   'manage_storage_backends', 'manage_web_search', 'manage_channels',
-  'run_evaluations', 'manage_members', 'manage_spaces',
+  'run_evaluations', 'manage_members',
   'manage_tenant_settings',
 ]
 
@@ -62,7 +62,6 @@ export const TENANT_API_KEY_CAPABILITY_GROUPS: ApiKeyCapabilityGroup[] = [
     labelKey: 'integrations.api.apiKeyCapabilityGroupCollaboration',
     capabilities: [
       { value: 'manage_members', labelKey: 'integrations.api.capabilityManageMembers', hintKey: 'integrations.api.capabilityManageMembersHint' },
-      { value: 'manage_spaces', labelKey: 'integrations.api.capabilityManageSpaces', hintKey: 'integrations.api.capabilityManageSpacesHint' },
     ],
   },
   {

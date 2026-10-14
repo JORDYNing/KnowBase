@@ -3,12 +3,6 @@ import i18n from '@/i18n'
 
 const t = (key: string) => i18n.global.t(key)
 
-// 用户登录接口
-export interface LoginRequest {
-  email: string
-  password: string
-}
-
 export interface LoginResponse {
   success: boolean
   message?: string
@@ -54,47 +48,10 @@ export interface LoginResponse {
   refresh_token?: string
 }
 
-export interface OIDCAuthURLResponse {
-  success: boolean
-  authorization_url?: string
-  state?: string
-  message?: string
-}
-
-export interface OIDCConfigResponse {
-  success: boolean
-  enabled: boolean
-  provider_display_name?: string
-  message?: string
-}
-
 export interface FeishuConfigResponse {
   success: boolean
   enabled: boolean
   message?: string
-}
-
-// 用户注册接口
-export interface RegisterRequest {
-  username: string
-  email: string
-  password: string
-}
-
-export interface RegisterResponse {
-  success: boolean
-  message?: string
-  data?: {
-    user: {
-      id: string
-      username: string
-      email: string
-    }
-    tenant: {
-      id: string
-      name: string
-    }
-  }
 }
 
 // 用户偏好（与后端 types.UserPreferences 对齐，字段可选 = 没显式设置过）。
@@ -217,50 +174,18 @@ export interface ModelInfo {
   updated_at: string
 }
 
-/**
- * 用户登录
- */
-export async function login(data: LoginRequest): Promise<LoginResponse> {
-  try {
-    const response = await post('/api/v1/auth/login', data)
-    return response as unknown as LoginResponse
-  } catch (error: any) {
-    return {
-      success: false,
-      message: error.message || t('error.auth.loginFailed')
+/** Exchange credentials for the team, or an explicitly authorized platform workspace. */
+export async function switchTenant(tenantId: number, refreshToken: string): Promise<LoginResponse> {
+  if (tenantId !== 10000) {
+    const { useAuthStore } = await import('@/stores/auth')
+    if (!useAuthStore().canAccessAllTenants) {
+      throw Object.assign(new Error(t('platformWorkspaces.forbidden')), { status: 403 })
     }
   }
-}
-
-/**
- * 获取 OIDC 登录跳转地址
- */
-export async function getOIDCAuthorizationURL(redirectURI: string): Promise<OIDCAuthURLResponse> {
-  try {
-    const response = await get(`/api/v1/auth/oidc/url?redirect_uri=${encodeURIComponent(redirectURI)}`)
-    return response as unknown as OIDCAuthURLResponse
-  } catch (error: any) {
-    return {
-      success: false,
-      message: error.message || t('error.auth.loginFailed')
-    }
-  }
-}
-
-/**
- * 获取 OIDC 登录配置
- */
-export async function getOIDCConfig(): Promise<OIDCConfigResponse> {
-  try {
-    const response = await get('/api/v1/auth/oidc/config')
-    return response as unknown as OIDCConfigResponse
-  } catch (error: any) {
-    return {
-      success: false,
-      enabled: false,
-      message: error.message || t('error.auth.loginFailed')
-    }
-  }
+  return post<LoginResponse>('/api/v1/auth/switch-tenant', {
+    tenant_id: tenantId,
+    refresh_token: refreshToken,
+  })
 }
 
 /**
@@ -293,6 +218,9 @@ export interface AuthConfigResponse {
   success: boolean
   registration_mode: 'self_serve' | 'invite_register' | 'invite_only' | string
   complex_password_enabled: boolean
+  login_methods?: string[]
+  password_login_enabled?: boolean
+  oidc_enabled?: boolean
 }
 
 export async function getAuthConfig(): Promise<AuthConfigResponse> {
@@ -302,54 +230,6 @@ export async function getAuthConfig(): Promise<AuthConfigResponse> {
   } catch {
     return { success: false, registration_mode: '', complex_password_enabled: false }
   }
-}
-
-/**
- * 用户注册
- */
-export async function register(data: RegisterRequest): Promise<RegisterResponse> {
-  try {
-    const response = await post('/api/v1/auth/register', data)
-    return response as unknown as RegisterResponse
-  } catch (error: any) {
-    return {
-      success: false,
-      message: error.message || t('error.auth.registerFailed')
-    }
-  }
-}
-
-/**
- * Lite 版自动初始化（创建默认用户/空间 + 签发令牌）
- */
-let autoSetupPromise: Promise<LoginResponse> | null = null
-
-export function autoSetup(): Promise<LoginResponse> {
-  if (autoSetupPromise) return autoSetupPromise
-
-  const request = (async () => {
-    try {
-      const nativeApp = (window as any).go?.main?.App
-      if (!nativeApp?.GetAutoSetupToken) return { success: false, message: 'Desktop authentication required' }
-      const token = await nativeApp.GetAutoSetupToken()
-      const response = await post('/api/v1/auth/auto-setup', {}, {
-        headers: { 'X-WeKnora-Desktop-Token': token },
-      })
-      return response as unknown as LoginResponse
-    } catch (error: any) {
-      return {
-        success: false,
-        message: error.message || 'Auto-setup unavailable'
-      }
-    }
-  })()
-
-  autoSetupPromise = request
-  void request.then(
-    () => { if (autoSetupPromise === request) autoSetupPromise = null },
-    () => { if (autoSetupPromise === request) autoSetupPromise = null },
-  )
-  return request
 }
 
 /**
@@ -466,50 +346,6 @@ export async function logout(): Promise<{ success: boolean; message?: string }> 
   }
 }
 
-export interface ChangePasswordRequest {
-  old_password: string
-  new_password: string
-}
-
-/** Map change-password API failures to localized UI strings. */
-export function resolveChangePasswordError(error: any): string {
-  const details =
-    typeof error?.error?.details === 'string'
-      ? error.error.details
-      : typeof error?.details === 'string'
-        ? error.details
-        : ''
-  switch (details) {
-    case 'invalid_old_password':
-      return t('userProfile.changePassword.failed')
-    case 'password_policy':
-      return t('userProfile.changePassword.policyFailed')
-    case 'same_password':
-      return t('userProfile.changePassword.sameAsCurrent')
-    default:
-      return error?.message || t('userProfile.changePassword.failed')
-  }
-}
-
-/**
- * Self-service password rotation. On success the backend revokes every
- * outstanding session for the caller, so the client should clear local
- * auth state and send the user back to /login.
- */
-export async function changePassword(
-  data: ChangePasswordRequest,
-): Promise<{ success: boolean; message?: string }> {
-  try {
-    const response = await post('/api/v1/auth/change-password', data)
-    return response as unknown as { success: boolean; message?: string }
-  } catch (error: any) {
-    return {
-      success: false,
-      message: resolveChangePasswordError(error),
-    }
-  }
-}
-
 /**
  * 验证Token有效性
  */
@@ -523,65 +359,5 @@ export async function validateToken(): Promise<{ success: boolean; valid?: boole
       valid: false,
       message: error.message || t('error.auth.validateTokenFailed')
     }
-  }
-}
-
-
-
-
-
-// ---- share-link registration --------------------------------------------
-
-// InviteLookup is the public projection of a share-link row used by
-// /register?token=xxx — enough to render the registration page header
-// ("X invited you to Y") without leaking sensitive inviter fields.
-export interface InviteLookup {
-  tenant_id: number
-  tenant_name?: string
-  role: string
-  expires_at: string
-}
-
-export interface InviteLookupResponse {
-  success: boolean
-  data?: InviteLookup
-  message?: string
-}
-
-export interface RegisterByInviteRequest {
-  token: string
-  email: string
-  username: string
-  password: string
-}
-
-/**
- * Resolve a share-link token (no auth) into the context the
- * registration page needs (tenant name, role, expiry). Returns 410
- * when the link is invalid / revoked / expired.
- *
- * Uses POST + body (rather than GET + path) so the plaintext token
- * never appears in access logs, browser history, or tracing spans.
- */
-export async function getInvitationByToken(token: string): Promise<InviteLookupResponse> {
-  try {
-    const response = await post(`/api/v1/auth/invitations/lookup`, { token })
-    return response as unknown as InviteLookupResponse
-  } catch (error: any) {
-    return { success: false, message: error.message || '' }
-  }
-}
-
-/**
- * Complete registration via a share-link token. The invitee supplies
- * their own email — the token is the authorisation, not an identity
- * lock.
- */
-export async function registerByInvite(data: RegisterByInviteRequest): Promise<LoginResponse> {
-  try {
-    const response = await post('/api/v1/auth/register-by-invite', data)
-    return response as unknown as LoginResponse
-  } catch (error: any) {
-    return { success: false, message: error.message || t('error.auth.registerFailed') }
   }
 }

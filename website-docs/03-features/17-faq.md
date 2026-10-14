@@ -88,7 +88,7 @@ type FAQSearchRequest struct {
 4. **迭代召回**（`applyFAQPostProcessing`）：当过滤后的唯一条目数不足 `match_count` 且某个向量结果列表打满时触发 `iterativeRetrieveWithDeduplication`——最多迭代 5 次、每次 TopK 翻倍（从首轮深度的 2 倍起，封顶 500，触顶即停），每轮与首轮同样融合打分，带负例过滤缓存，所有列表都未打满时提前终止；
 5. 结果附带 `score`、`match_type`、`matched_question`（实际命中的是标准问还是哪个相似问），答案按 `answer_strategy`（all / random）返回。
 
-检索范围内没有 FAQ 库时直接跳过该后处理，普通混合检索不受影响。只要范围内有 FAQ 库（即使主 KB 是文档库，或 FAQ 库来自组织共享），负例过滤都会生效；迭代召回只在主 KB 为 FAQ 库时触发。agent 检索链在 FAQ 库上同样经过这条后处理路径。
+检索范围内没有 FAQ 库时直接跳过该后处理，普通混合检索不受影响。只要范围内有 FAQ 库（即使主 KB 是文档库），负例过滤都会生效；迭代召回只在主 KB 为 FAQ 库时触发。agent 检索链在 FAQ 库上同样经过这条后处理路径。
 
 ## 条目与接口参考
 
@@ -212,9 +212,9 @@ func (c *Chunk) SetFAQMetadata(meta *FAQChunkMetadata) error {
 
 条目更新走**增量索引**（`incrementalIndexFAQEntry`）：只对变化部分重新 embedding——标准问变化重索引；相似问逐个 diff 增删；答案变化仅在 `question_answer` 模式触发重索引；借助 `SourceID` 精确删除失效索引项。
 
-### 克隆 / 共享同步机制 {#_7-克隆-共享同步机制}
+### 克隆同步机制 {#_7-克隆-共享同步机制}
 
-`internal/application/service/faq_clone_sync.go`。触发场景：**知识库克隆（copy）** 与 **共享知识库内容同步**——克隆产生的目标库 FAQ chunk 是新记录，运营状态（启停 / 推荐 / 标签 / 答案策略）需要与源库对齐：
+`internal/application/service/faq_clone_sync.go`。触发场景：**当前空间内的知识库克隆（copy）**——克隆产生的目标库 FAQ chunk 是新记录，运营状态（启停 / 推荐 / 标签 / 答案策略）需要与源库对齐：
 
 - **配对**：按 `ContentHash` 匹配源 / 目标条目，得到 `FAQChunkSyncPair{SrcChunkID, DstChunkID}`（归一化哈希保证繁简 / 全半角 / 顺序差异不破坏配对，`internal/types/faq_sync_test.go` 佐证）；
 - **同步内容**：`IsEnabled` 启停状态、`Flags` 的 `ChunkFlagRecommended` 推荐位、`TagID` 标签归属、`AnswerStrategy` 答案策略；

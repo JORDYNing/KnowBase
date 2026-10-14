@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { spawnSync } from 'node:child_process'
-import { buildCLIConnectCommand } from './cliIntegration'
+import { buildCLIConnectCommand, CLI_MCP_CONFIG } from './cliIntegration'
 
 test('CLI hosts preserve proxy prefixes and omit the SDK API suffix', () => {
   for (const [base, origin, host] of [
@@ -11,7 +11,7 @@ test('CLI hosts preserve proxy prefixes and omit the SDK API suffix', () => {
     ['http://127.0.0.1:19321/api/v1', 'null', 'http://127.0.0.1:19321'],
   ]) {
     const command = buildCLIConnectCommand(base!, origin!)
-    assert.ok(command.includes(`--host '${host}' --use &&\nweknora auth login`))
+    assert.equal(command, `gamelib profile add gamelib --host '${host}' --use &&\nprintf '%s\\n' "$GAMELIB_API_KEY" | gamelib auth login --with-token`)
   }
 })
 
@@ -28,4 +28,25 @@ test('copyable host arguments remain literal in a POSIX shell', () => {
   assert.equal(result.status, 0)
   assert.equal(result.stderr, '')
   assert.equal(result.stdout, "https://kb.example.com/team'/$HOME/%60printf-injected%60/$(printf-injected)")
+})
+
+test('CLI MCP example uses the gamelib command and connection profile', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(CLI_MCP_CONFIG, null, 2)), {
+    mcpServers: {
+      gamelib: { command: 'gamelib', args: ['--profile', 'gamelib', 'mcp', 'serve'] },
+    },
+  })
+})
+
+test('CLI connection passes the API key through stdin without putting it in command arguments', () => {
+  const command = buildCLIConnectCommand('/api/v1', 'https://kb.example.com')
+  const shell = `gamelib() {
+    if [ "$1" = "profile" ]; then return 0; fi
+    [ "$1" = "auth" ] && [ "$2" = "login" ] && [ "$3" = "--with-token" ] && [ "$#" -eq 3 ] || return 2
+    cat
+  }
+${command}`
+  const result = spawnSync('/bin/sh', ['-c', shell], { encoding: 'utf8', env: { GAMELIB_API_KEY: 'test-key with spaces' } })
+  assert.equal(result.status, 0)
+  assert.equal(result.stdout, 'test-key with spaces\n')
 })

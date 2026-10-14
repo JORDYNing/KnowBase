@@ -121,8 +121,6 @@ func (s *agentService) registerWebPageFiles(
 			search.WithPageReader(fetch)
 		}
 	}
-	// The handler already pins session storage to its owner tenant, independently
-	// of a shared agent's provider/knowledge tenant.
 	tenantID, ok := types.SandboxTenantIDFromContext(ctx)
 	if !ok || tenantID == 0 || s.db == nil || sessionID == "" || messageID == "" {
 		return

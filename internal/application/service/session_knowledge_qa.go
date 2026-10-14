@@ -26,6 +26,9 @@ func (s *sessionService) KnowledgeQA(
 	req *types.QARequest,
 	eventBus *event.EventBus,
 ) error {
+	if err := validateQAWorkspace(ctx, req); err != nil {
+		return err
+	}
 	webSearchEnabled := resolveWebSearchEnabled(req)
 	logger.Infof(
 		ctx,
@@ -272,10 +275,9 @@ func (s *sessionService) selectChatModelID(
 	knowledgeBaseIDs []string,
 	knowledgeIDs []string,
 ) (string, error) {
-	// If no knowledge base IDs but have knowledge IDs, derive KB IDs from knowledge IDs (include shared KB files)
 	if len(knowledgeBaseIDs) == 0 && len(knowledgeIDs) > 0 {
 		tenantID := types.MustTenantIDFromContext(ctx)
-		knowledgeList, err := s.knowledgeService.GetKnowledgeBatchWithSharedAccess(ctx, tenantID, knowledgeIDs)
+		knowledgeList, err := s.knowledgeService.GetAuthorizedKnowledgeBatch(ctx, tenantID, knowledgeIDs)
 		if err != nil {
 			logger.Warnf(ctx, "Failed to get knowledge batch for model selection: %v", err)
 		} else {
@@ -345,16 +347,6 @@ func (s *sessionService) selectChatModelID(
 	return "", fmt.Errorf("no chat model ID available: no knowledge bases configured and no available models")
 }
 
-// resolveKnowledgeBasesFromAgent resolves knowledge base IDs based on agent's KBSelectionMode.
-// sessionTenantID is the tenant of the current session (caller); it is compared with
-// customAgent.TenantID to detect the shared-agent scenario and avoid leaking the
-// current user's personal shared KBs into the agent's retrieval scope.
-//
-// Returns the resolved knowledge base IDs based on the selection mode:
-//   - "all": fetches all knowledge bases for the tenant
-//   - "selected": uses the explicitly configured knowledge bases
-//   - "none": returns empty slice
-//   - default: falls back to configured knowledge bases for backward compatibility
 func (s *sessionService) resolveKnowledgeBasesFromAgent(
 	ctx context.Context,
 	customAgent *types.CustomAgent,
@@ -387,7 +379,6 @@ func (s *sessionService) resolveKnowledgeBasesFromAgent(
 		if err != nil {
 			logger.Warnf(ctx, "Failed to list all knowledge bases: %v", err)
 		}
-		kbIDSet := make(map[string]bool)
 		kbIDs := make([]string, 0, len(allKBs))
 		ownSkipped := 0
 		for _, kb := range allKBs {
@@ -396,49 +387,11 @@ func (s *sessionService) resolveKnowledgeBasesFromAgent(
 				continue
 			}
 			kbIDs = append(kbIDs, kb.ID)
-			kbIDSet[kb.ID] = true
 		}
 
-		// For shared agents (session tenant != agent tenant), only use the agent
-		// tenant's own KBs. Including the current user's shared KBs would leak
-		// unrelated KBs from other organisations into the agent's retrieval scope.
-		isSharedAgent := sessionTenantID != 0 && sessionTenantID != customAgent.TenantID
-		sharedSkipped := 0
-		if !isSharedAgent {
-			tenantID := types.MustTenantIDFromContext(ctx)
-			userIDVal := ctx.Value(types.UserIDContextKey)
-			if userIDVal != nil {
-				if userID, ok := userIDVal.(string); ok && userID != "" && s.kbShareService != nil {
-					callerTenantRole := types.TenantRoleFromContext(ctx)
-					sharedList, err := s.kbShareService.ListSharedKnowledgeBases(ctx, tenantID, callerTenantRole)
-					if err != nil {
-						logger.Warnf(ctx, "Failed to list shared knowledge bases: %v", err)
-					} else {
-						for _, info := range sharedList {
-							if info == nil || info.KnowledgeBase == nil || kbIDSet[info.KnowledgeBase.ID] {
-								continue
-							}
-							if !accept(info.KnowledgeBase) {
-								sharedSkipped++
-								continue
-							}
-							kbIDs = append(kbIDs, info.KnowledgeBase.ID)
-							kbIDSet[info.KnowledgeBase.ID] = true
-						}
-					}
-				}
-			}
-		} else {
-			logger.Infof(ctx, "Shared agent detected (session tenant %d != agent tenant %d): skipping user's shared KBs",
-				sessionTenantID, customAgent.TenantID)
+		if ownSkipped > 0 {
+			logger.Infof(ctx, "KBSelectionMode=all: tool-capability filter removed %d KBs", ownSkipped)
 		}
-
-		if ownSkipped+sharedSkipped > 0 {
-			logger.Infof(ctx,
-				"KBSelectionMode=all: tool-capability filter removed %d own + %d shared KBs (agent=%s, tools=%v)",
-				ownSkipped, sharedSkipped, customAgent.ID, customAgent.Config.AllowedTools)
-		}
-		logger.Infof(ctx, "KBSelectionMode=all: loaded %d knowledge bases (own + shared)", len(kbIDs))
 		return kbIDs
 	case "selected":
 		logger.Infof(ctx, "KBSelectionMode=selected: using %d configured knowledge bases", len(customAgent.Config.KnowledgeBases))
@@ -455,12 +408,6 @@ func (s *sessionService) resolveKnowledgeBasesFromAgent(
 	}
 }
 
-// buildSearchTargets computes the unified search targets from knowledgeBaseIDs and knowledgeIDs.
-// tenantID is the retrieval scope: session.TenantID or effective tenant from shared agent (set by handler).
-// This is called once at the request entry point to avoid repeated queries later in the pipeline.
-// Logic:
-//   - For each knowledgeBaseID: resolve actual TenantID (own, org-shared, or in retrieval-tenant scope for shared agent)
-//   - For each knowledgeID: find its knowledgeBaseID; if the KB is already in the list, skip; otherwise add SearchTargetTypeKnowledge
 func (s *sessionService) buildSearchTargets(
 	ctx context.Context,
 	tenantID uint64,
@@ -479,7 +426,7 @@ func (s *sessionService) buildSearchTargets(
 	fullKBSet := make(map[string]bool)
 
 	// First pass: batch-fetch KBs, then resolve tenant per ID (tenant scope already set by caller)
-	permissions := kbReadPermissions(ctx, s.kbShareService)
+	permissions := kbReadPermissions(ctx)
 	kbIDsToFetch := append([]string(nil), knowledgeBaseIDs...)
 	for kbID := range tagIDsByKB {
 		kbIDsToFetch = append(kbIDsToFetch, kbID)
@@ -506,7 +453,7 @@ func (s *sessionService) buildSearchTargets(
 		kbTenantMap[kbID] = caller.TenantID
 		if kb != nil {
 			kbTenantMap[kbID] = 0
-			if allowed, err := permissions.Check(kbID, kb.TenantID, types.OrgRoleViewer); err == nil && allowed {
+			if allowed, err := permissions.Check(kbID, kb.TenantID, types.KBPermissionRead); err == nil && allowed {
 				kbTenantMap[kbID] = kb.TenantID
 			}
 		}
@@ -533,9 +480,8 @@ func (s *sessionService) buildSearchTargets(
 
 	kbToKnowledgeIDs := make(map[string][]string)
 
-	// Process individual knowledge IDs (include shared KB files the user has access to)
 	if len(knowledgeIDs) > 0 {
-		knowledgeList, err := s.knowledgeService.GetKnowledgeBatchWithSharedAccess(ctx, tenantID, knowledgeIDs)
+		knowledgeList, err := s.knowledgeService.GetAuthorizedKnowledgeBatch(ctx, tenantID, knowledgeIDs)
 		if err != nil {
 			logger.Warnf(ctx, "Failed to get knowledge batch for search targets: %v", err)
 			return targets, nil // Return what we have, don't fail

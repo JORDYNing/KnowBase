@@ -411,8 +411,8 @@ type Message struct {
 	// AgentID is the agent used for this individual assistant turn. Unlike the
 	// session's last_request_state it remains stable when users switch agents.
 	AgentID string `json:"agent_id,omitempty" gorm:"type:varchar(36);default:'';index"`
-	// AgentTenantID is the effective/source tenant used to resolve a shared
-	// agent's models and knowledge. It is intentionally not exposed in JSON.
+	// AgentTenantID records the execution tenant for historical message and
+	// resource provenance. It is intentionally not exposed in JSON.
 	AgentTenantID uint64 `json:"-" gorm:"column:agent_tenant_id;default:0"`
 	// ModelID is the requested/effective chat model binding captured for this
 	// turn. It is useful for reproducibility and suggestion generation.

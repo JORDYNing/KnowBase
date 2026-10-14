@@ -57,18 +57,17 @@ func faqChunkWithNegative(t *testing.T, id string, tenantID uint64, kbID, negati
 func TestApplyFAQPostProcessingFiltersNegativeQuestionsAcrossScope(t *testing.T) {
 	repo := &tenantScopedFAQChunkRepo{chunks: map[string]*types.Chunk{
 		"own-faq":    faqChunkWithNegative(t, "own-faq", 1, "kb-faq", "refund for gift cards"),
-		"shared-faq": faqChunkWithNegative(t, "shared-faq", 2, "kb-shared-faq", "refund for gift cards"),
+		"shared-faq": faqChunkWithNegative(t, "shared-faq", 1, "kb-shared-faq", "refund for gift cards"),
 		"doc":        {ID: "doc", TenantID: 1, KnowledgeBaseID: "kb-doc", ChunkType: types.ChunkTypeText},
 	}}
 	s := &knowledgeBaseService{
-		chunkRepo:      repo,
-		kbShareService: &fakeKBShareService{allowedKBs: map[string]bool{"kb-shared-faq": true}},
+		chunkRepo: repo,
 	}
 	docKB := &types.KnowledgeBase{ID: "kb-doc", TenantID: 1, Type: types.KnowledgeBaseTypeDocument}
 	scope := []*types.KnowledgeBase{
 		docKB,
 		{ID: "kb-faq", TenantID: 1, Type: types.KnowledgeBaseTypeFAQ},
-		{ID: "kb-shared-faq", TenantID: 2, Type: types.KnowledgeBaseTypeFAQ},
+		{ID: "kb-shared-faq", TenantID: 1, Type: types.KnowledgeBaseTypeFAQ},
 	}
 	chunks := []*types.IndexWithScore{
 		{ChunkID: "own-faq", Score: 0.9},

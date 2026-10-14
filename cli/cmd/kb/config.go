@@ -22,15 +22,15 @@ type ConfigService interface {
 	GetInitializationConfig(ctx context.Context, kbID string) (*sdk.KBModelConfigView, error)
 }
 
-// NewCmdConfig builds `weknora kb config <kb-id>` — read-only inspection of a
-// knowledge base's model configuration. Write it with `weknora kb config set`.
+// NewCmdConfig builds `gamelib kb config <kb-id>` — read-only inspection of a
+// knowledge base's model configuration. Write it with `gamelib kb config set`.
 func NewCmdConfig(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config <kb-id>",
 		Short: "Show a knowledge base's model configuration (set it with `config set`)",
 		Long: `Show the model configuration bound to a knowledge base: embedding, llm
 (chat), rerank, and multimodal model names + source. retrieval_ready is false
-until an embedding model is bound — configure it with 'weknora kb config set'.
+until an embedding model is bound — configure it with 'gamelib kb config set'.
 Provider API keys are never shown.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -48,12 +48,12 @@ Provider API keys are never shown.`,
 	}
 	// `kb config` reads (this command's RunE); `kb config set` writes. Same
 	// read/write pairing as mainstream config surfaces.
-	cmd.AddCommand(newKBModelWriteCmd(f, "set <kb-id>", []string{"weknora", "kb", "config", "set"}))
+	cmd.AddCommand(newKBModelWriteCmd(f, "set <kb-id>", []string{"gamelib", "kb", "config", "set"}))
 	cmdutil.AddFormatFlag(cmd, kbConfigFields...)
 	cmdutil.SetAgentHelp(cmd, cmdutil.AgentHelp{
-		UsedFor:       "show a KB's model config (embedding/llm/rerank/multimodal by name, secret-free). retrieval_ready=false => run `weknora kb config set`. Write config with `weknora kb config set`.",
+		UsedFor:       "show a KB's model config (embedding/llm/rerank/multimodal by name, secret-free). retrieval_ready=false => run `gamelib kb config set`. Write config with `gamelib kb config set`.",
 		RequiredFlags: []string{"<kb-id> (positional)"},
-		Examples:      []string{"weknora kb config kb_abc --jq .data.embedding_model_id"},
+		Examples:      []string{"gamelib kb config kb_abc --jq .data.embedding_model_id"},
 		Output:        "envelope.data is {retrieval_ready, embedding{configured,model_name,source,dimension}, llm{...}, rerank{enabled,model_name}, multimodal{enabled}} — secret-free (no provider api keys)",
 	})
 	return cmd
@@ -77,7 +77,7 @@ func runConfig(ctx context.Context, fopts *cmdutil.FormatOptions, svc ConfigServ
 	fmt.Fprintf(w, "%-13s %s\n", "RERANK:", rerankLabel(cfg.Rerank))
 	fmt.Fprintf(w, "%-13s %v\n", "MULTIMODAL:", cfg.Multimodal.Enabled)
 	if !cfg.RetrievalReady {
-		fmt.Fprintln(w, "\n(not retrieval-ready — no embedding model; run `weknora kb config set <kb-id> --chat-model <id> --embedding-model <id>`)")
+		fmt.Fprintln(w, "\n(not retrieval-ready — no embedding model; run `gamelib kb config set <kb-id> --chat-model <id> --embedding-model <id>`)")
 	}
 	return nil
 }

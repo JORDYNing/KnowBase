@@ -7,12 +7,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
-// populateFAQAnswers populates FAQ answers for the search results.
-//
-// The chunk lookup is not tenant scoped: FAQ hits from an org-shared KB
-// belong to the sharing workspace, and in question-only index mode their
-// answers exist only in chunk metadata, so a caller-tenant filter left the
-// model with bare questions. The IDs come from retrieval results (#3342).
 func (p *PluginMerge) populateFAQAnswers(
 	ctx context.Context,
 	results []*types.SearchResult,

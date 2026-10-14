@@ -20,7 +20,7 @@ Gamelib（维娜拉）是腾讯开源的知识库问答系统，支持导入 PDF
 | 模型绑定单一厂商 | 模型抽象层：Ollama 本地模型与数十家内置厂商（OpenAI 兼容、Anthropic Messages、Gemini 原生等协议）均可，LLM / Embedding / Rerank / VLM / ASR 分类管理，厂商与模型目录见[模型管理](../03-features/06-models.md) |
 | 数据安全与私有化 | 全栈可私有部署；敏感凭证（API Key 等）以 AES-256 落盘加密（`SYSTEM_AES_KEY`）；多租户隔离 + RBAC 角色鉴权 |
 | 多步骤任务与工具调用 | 内置 Agent（ReAct 多步推理）、MCP 工具接入、Agent Skills 沙箱执行、Web 搜索（SearXNG 等）、数据分析（对 CSV/Excel 执行 SQL） |
-| 团队协作 | 租户（工作空间）+ 成员角色 + 组织（Organization）跨租户知识库共享 + 邀请机制 |
+| 团队协作 | 飞书登录自动申请加入团队空间 10000，由 Owner/Admin 审批并分配角色 |
 
 ## 核心概念
 
@@ -31,11 +31,10 @@ Gamelib（维娜拉）是腾讯开源的知识库问答系统，支持导入 PDF
 | 概念 | 说明 |
 | --- | --- |
 | 租户 Tenant | 工作空间，管理知识库、模型、智能体、会话和存储配额。详见[空间与权限](../03-features/01-tenant-auth.md) |
-| 用户 User | 登录账号，一个用户可以加入多个工作空间 |
+| 用户 User | 通过飞书认证的账号；新账号无个人空间，获批后加入团队空间 |
 | 成员 TenantMember | 用户在某个空间中的成员关系，包含角色和状态 |
 | 角色 TenantRole | Owner、Admin、Contributor、Viewer 四级，决定用户可执行的空间操作 |
 | API Key（TenantAPIKey） | 程序访问凭证，可授予指定能力并限定知识库范围。空间与平台 Key 的权限分别管理 |
-| 组织 Organization | 连接多个工作空间，按组织成员角色共享知识库和智能体 |
 
 ### 知识域
 
@@ -72,7 +71,6 @@ flowchart TB
         T["Tenant (租户 / 工作空间)"]
         TM["TenantMember (角色: owner/admin/contributor/viewer)"]
         AK["TenantAPIKey (X-API-Key)"]
-        ORG["Organization (跨租户组织)"]
     end
     subgraph knowledge["知识域"]
         KB["KnowledgeBase (document/faq/wiki)"]
@@ -91,7 +89,6 @@ flowchart TB
     end
     U -- "成员关系" --> TM --> T
     T --> AK
-    T --> ORG
     T --> KB
     T --> M
     T --> AG
@@ -113,7 +110,7 @@ flowchart TB
 - **检索**：向量 + BM25 混合检索、RRF 融合、Rerank 重排、查询改写与扩展、意图识别（greeting/chitchat/web_search 等，见 `config/prompt_templates/intent_prompts.yaml`）。
 - **问答与 Agent**：流式 SSE 问答、多轮上下文压缩、引用溯源；ReAct Agent（工具：`search_knowledge`、`read_document`、`list_documents`、`wiki_search`、`data_analysis` 等）、MCP 外部工具、Agent Skills（Docker、Cube 或 E2B 沙箱执行脚本）、Web 搜索。
 - **对话体验**：回答进行中追加要求、从任意历史提问分叉或原地回滚（带沙箱工作区检查点）、按会话调整思考强度，「产物」页跨会话汇总智能体生成的文件，详见[会话体验](../03-features/18-chat-experience.md)。
-- **多租户与安全**：RBAC 角色鉴权（默认开启，`WEKNORA_TENANT_ENABLE_RBAC`）、审计日志（默认保留 90 天）、邀请制注册（`auth.registration_mode=invite_only`，也可用旧变量 `DISABLE_REGISTRATION=true`）、OIDC 单点登录、SSRF 防护（可选仅白名单出站 `SSRF_DNS_WHITELIST_ONLY`）、敏感字段 AES-256 加密。界面提供简体中文、英文、日文、韩文和俄文。
+- **团队协作与安全**：飞书认证、加入审批、强制 RBAC 角色鉴权、审计日志（默认保留 90 天）、SSRF 防护（可选仅白名单出站 `SSRF_DNS_WHITELIST_ONLY`）、敏感字段 AES-256 加密。界面提供简体中文、英文、日文、韩文和俄文。
 - **可观测性**：Langfuse 全链路追踪（LLM/Embedding/Rerank/VLM/ASR 调用与 token 统计）、健康检查、Swagger API 文档（`GIN_MODE=debug` 时）。
 - **生态**：REST API（`/api/v1`）+ API Key、内置 MCP Server（按空间创建端点，把 Gamelib 作为工具暴露给其他 Agent，见[MCP 集成](../03-features/08-mcp.md)）、CLI（`cli/`）、微信小程序（`miniprogram/`）、浏览器插件渠道、[本机浏览器](../05-clients/09-local-browser.md)（智能体通过 Chrome/Edge 扩展操作用户浏览器）。Lite 桌面版（macOS）可在本机沙箱中执行智能体命令。
 

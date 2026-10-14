@@ -37,9 +37,9 @@ import (
 // EnableCrossTenantAccess flag, replacing the 12-line if-block that
 // previously opened ListAllTenants and SearchTenants.
 //
-// JWT behavior for POST /tenants and GET /tenants remains unchanged. Platform
-// API keys may create tenants through system_tenants_manage; workspace keys
-// remain default-denied on tenant-catalog operations.
+// Only platform administrators may create tenants with a JWT. Platform API
+// keys may create tenants through system_tenants_manage; workspace keys remain
+// default-denied on tenant-catalog operations.
 func RegisterTenantRoutes(
 	r *gin.RouterGroup,
 	handler *handler.TenantHandler,
@@ -60,14 +60,8 @@ func RegisterTenantRoutes(
 	// 空间路由组
 	tenantRoutes := r.Group("/tenants")
 	{
-		// 创建空间对所有已登录用户开放：用户可以为自己再开一个工作区，
-		// handler 内部会调 EnsureOwner 把调用者写成新空间的 Owner。
-		// 跨空间超管走同一个端点，但能携带 storage_quota / status 等
-		// 全字段（见 handler.CreateTenant 内部分支）。
-		// 安全说明：这里不挂 g.CrossTenant()，因为 self-service 创建
-		// 不需要跨空间特权；handler 也不读写 X-Tenant-ID 指向的现有
-		// 空间，所以越过 PathTenantMatch 守卫不会扩大攻击面。
-		// 创建空间不对 API key 开放（注册在原始 group，默认拒绝）。
+		// handler 仅允许平台超管或具备 system_tenants_manage 的平台
+		// API key 创建空间，普通用户没有自助创建能力。
 		g.apiKeyRoute(tenantRoutes, http.MethodPost, "",
 			apiKeyPlatform(types.APIKeyCapabilitySystemTenantsManage), handler.CreateTenant)
 		g.apiKeyRoute(tenantRoutes, http.MethodGet, "", apiKeyManageTenantSettings(apiKeyFullAccess()), handler.ListTenants)
@@ -355,4 +349,17 @@ func RegisterSystemAdminRoutes(
 				apiKeyPlatform(types.APIKeyCapabilitySystemAuditRead), auditLogHandler.ListSystemAuditLog)
 		}
 	}
+}
+
+// RegisterTenantJoinRequestRoutes exposes identity-level application state and
+// tenant-scoped review. API keys deliberately have no application authority.
+func RegisterTenantJoinRequestRoutes(r *gin.RouterGroup, h *handler.TenantJoinRequestHandler, g *rbacGuards) {
+	if h == nil {
+		return
+	}
+	r.GET("/me/tenant-join-request", h.GetMyRequest)
+	r.POST("/me/tenant-join-request", h.SubmitMyRequest)
+	reviews := r.Group("/tenants/:id/join-requests", g.PathTenantMatch(), g.Admin())
+	reviews.GET("", h.ListRequests)
+	reviews.PUT("/:request_id/review", h.ReviewRequest)
 }

@@ -231,23 +231,31 @@ func TestMutationHandlersPreserveApplicationStatus(t *testing.T) {
 	}
 }
 
-func TestBatchReparsePreservesAdminAndRBACRolloutPolicy(t *testing.T) {
+func TestBatchReparsePreservesAdminAndEnforcesOwnershipDespiteLegacyFlag(t *testing.T) {
 	for _, enforced := range []bool{true, false} {
-		t.Run(fmt.Sprint(enforced), func(t *testing.T) {
-			cfg := transferHandlerConfig()
-			cfg.Tenant.EnableRBAC = &enforced
-			kg := &mutationAdmissionKnowledge{rows: []*types.Knowledge{admissionKnowledge(false)}}
-			queue := &documentDeleteEnqueuer{}
-			h := &KnowledgeHandler{cfg: cfg, kbService: admissionKB("colleague"), kgService: kg, asynqClient: queue}
-			r := transferHandlerRouter(nil)
-			if enforced {
-				r = documentHandlerRouter()
-			} // Admin may edit another creator's KB.
-			r.POST("/batch", h.BatchReparseKnowledge)
-			w := mutationRequest(r, http.MethodPost, "/batch", `{"kb_id":"kb","ids":["doc"]}`)
-			require.Equal(t, 200, w.Code, w.Body.String())
-			require.True(t, kg.writeGrant)
-			require.NotNil(t, queue.task)
-		})
+		for _, admin := range []bool{true, false} {
+			t.Run(fmt.Sprintf("legacy_enforced=%v/admin=%v", enforced, admin), func(t *testing.T) {
+				cfg := transferHandlerConfig()
+				cfg.Tenant.EnableRBAC = &enforced
+				kg := &mutationAdmissionKnowledge{rows: []*types.Knowledge{admissionKnowledge(false)}}
+				queue := &documentDeleteEnqueuer{}
+				h := &KnowledgeHandler{cfg: cfg, kbService: admissionKB("colleague"), kgService: kg, asynqClient: queue}
+				r := transferHandlerRouter(nil)
+				if admin {
+					r = documentHandlerRouter()
+				}
+				r.POST("/batch", h.BatchReparseKnowledge)
+				w := mutationRequest(r, http.MethodPost, "/batch", `{"kb_id":"kb","ids":["doc"]}`)
+				if admin {
+					require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+					require.True(t, kg.writeGrant)
+					require.NotNil(t, queue.task)
+				} else {
+					require.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
+					require.False(t, kg.writeGrant)
+					require.Nil(t, queue.task)
+				}
+			})
+		}
 	}
 }

@@ -44,7 +44,7 @@ func authDryRunFactory(t *testing.T, cfg *config.Config) *cmdutil.Factory {
 // withRootHarnessAuth wraps an auth subcommand under a synthetic root cmd
 // that registers the global persistent flags.
 func withRootHarnessAuth(sub *cobra.Command, args ...string) *cobra.Command {
-	root := &cobra.Command{Use: "weknora"}
+	root := &cobra.Command{Use: "gamelib"}
 	pf := root.PersistentFlags()
 	pf.BoolP("yes", "y", false, "")
 	pf.String("format", "", "")

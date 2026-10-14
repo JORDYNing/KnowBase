@@ -2,7 +2,6 @@ package handler
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/gin-gonic/gin"
@@ -11,7 +10,6 @@ import (
 // DeploymentCapabilityKeys is the canonical capability key list shared with
 // frontend/src/config/deploymentCapabilities.ts — keep both in sync.
 var DeploymentCapabilityKeys = []string{
-	"organizations",
 	"agents",
 	"integrations.im",
 	"integrations.embed",
@@ -41,7 +39,6 @@ type DeploymentCapabilitiesData struct {
 
 // DeploymentFeatureAvailability mirrors injected backend handlers/services.
 type DeploymentFeatureAvailability struct {
-	Organizations bool
 	Agents        bool
 	IM            bool
 	Embed         bool
@@ -69,11 +66,6 @@ func BuildDeploymentCapabilities(
 	edition string,
 	available DeploymentFeatureAvailability,
 ) DeploymentCapabilitiesData {
-	isLite := strings.EqualFold(strings.TrimSpace(edition), "lite")
-	organizations := supportedDeploymentCapability(available.Organizations && !isLite)
-	if isLite {
-		organizations.Reason = "not_supported_in_lite"
-	}
 
 	sandboxDocker := DeploymentCapability{
 		Supported: available.Sandbox && available.SandboxDocker,
@@ -104,7 +96,6 @@ func BuildDeploymentCapabilities(
 	return DeploymentCapabilitiesData{
 		Edition: edition,
 		Capabilities: map[string]DeploymentCapability{
-			"organizations":           organizations,
 			"agents":                  supportedDeploymentCapability(available.Agents),
 			"integrations.im":         supportedDeploymentCapability(available.IM),
 			"integrations.embed":      supportedDeploymentCapability(available.Embed),

@@ -39,7 +39,7 @@ type KBSearchService interface {
 	ListKnowledgeBases(ctx context.Context) ([]sdk.KnowledgeBase, error)
 }
 
-// NewCmdKB builds `weknora search kb "<query>"` - substring + case-insensitive
+// NewCmdKB builds `gamelib search kb "<query>"` - substring + case-insensitive
 // match across KB names and descriptions visible to the active profile.
 // Results are sorted by name length (shortest first; usually the closest
 // hit) for deterministic output.
@@ -53,9 +53,9 @@ to the active profile. Results are sorted by name length (shortest first;
 usually the closest hit) for deterministic output.
 
 This is name-discovery only - for searching *inside* a knowledge base's
-content, use ` + "`weknora search chunks`" + `.`,
-		Example: `  weknora search kb "marketing"
-  weknora search kb "team" --limit 5 --format json`,
+content, use ` + "`gamelib search chunks`" + `.`,
+		Example: `  gamelib search kb "marketing"
+  gamelib search kb "team" --limit 5 --format json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			opts.Query = strings.TrimSpace(args[0])
@@ -82,7 +82,7 @@ content, use ` + "`weknora search chunks`" + `.`,
 	cmdutil.SetAgentHelp(cmd, cmdutil.AgentHelp{
 		UsedFor:       "Find knowledge bases by name or description (client-side case-insensitive substring match). Results come with meta.count; use --limit to cap. For searching content inside a KB, use 'search chunks' instead.",
 		RequiredFlags: []string{"<query> (positional)"},
-		Examples:      []string{`weknora search kb "engineering" --format json`},
+		Examples:      []string{`gamelib search kb "engineering" --format json`},
 		Output:   "envelope.data is an array of KnowledgeBase objects with id, name, knowledge_count; meta.count is the returned count; meta.has_more=true if more matched than --limit",
 	})
 	return cmd

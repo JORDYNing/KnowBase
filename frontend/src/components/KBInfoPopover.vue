@@ -59,23 +59,6 @@
                 <span class="kb-info-card-hint">{{ accessPermissionSummary }}</span>
               </span>
             </div>
-            <div v-if="currentSharedKb" class="kb-info-card-row">
-              <span class="kb-info-card-label">{{ t('knowledgeBase.accessInfo.fromOrg') }}</span>
-              <span class="kb-info-card-value">
-                「{{ currentSharedKb.org_name }}」 · {{ t('knowledgeBase.accessInfo.sharedAt') }}
-                {{ formatStringDate(new Date(currentSharedKb.shared_at)) }}
-              </span>
-            </div>
-            <div v-else-if="effectiveKBPermission" class="kb-info-card-row">
-              <span class="kb-info-card-label">{{ t('knowledgeBase.infoCard.source') }}</span>
-              <span class="kb-info-card-value">{{ t('knowledgeList.detail.sourceTypeAgent') }}</span>
-            </div>
-            <div v-if="(kbInfo.share_count ?? 0) > 0" class="kb-info-card-row">
-              <span class="kb-info-card-label">{{ t('knowledgeBase.infoCard.sharedTo') }}</span>
-              <span class="kb-info-card-value">
-                {{ t('knowledgeList.sharedToOrgs', { count: kbInfo.share_count }) }}
-              </span>
-            </div>
           </section>
           <section v-if="capabilities.length" class="setting-drawer__section">
             <h4 class="setting-drawer__section-title">
@@ -168,7 +151,6 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import VectorStoreBadge from '@/components/VectorStoreBadge.vue'
-import { useOrganizationStore } from '@/stores/organization'
 import { useAuthStore } from '@/stores/auth'
 import { formatStringDate } from '@/utils'
 
@@ -185,7 +167,6 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
-const orgStore = useOrganizationStore()
 const authStore = useAuthStore()
 
 // "Owner" here mirrors the per-page guards: the original creator
@@ -201,43 +182,13 @@ const isOwner = computed<boolean>(() => {
   return creatorId === userId
 })
 
-const currentSharedKb = computed(() => {
-  const id = props.kbInfo?.id
-  if (!id) return null
-  return orgStore.sharedKnowledgeBases?.find?.((s: any) => s.knowledge_base?.id === id) ?? null
+const accessRoleLabel = computed(() => t(`tenantMember.role.${authStore.currentTenantRole}`))
+const accessPermissionSummary = computed(() => {
+  if (isOwner.value || authStore.hasRole('admin')) return t('knowledgeBase.accessInfo.permissionOwner')
+  return t('knowledgeBase.accessInfo.permissionViewer')
 })
-
-const isViaShare = computed<boolean>(() => !!currentSharedKb.value)
-
-const effectiveKBPermission = computed<string>(() => {
-  const id = props.kbInfo?.id || ''
-  return orgStore.getKBPermission?.(id) || props.kbInfo?.my_permission || ''
-})
-
-const accessRoleLabel = computed<string>(() => {
-  if (!isViaShare.value && isOwner.value) return t('knowledgeBase.accessInfo.roleOwner')
-  const perm = effectiveKBPermission.value
-  if (perm) return t(`organization.role.${perm}`)
-  return '--'
-})
-
-const accessPermissionSummary = computed<string>(() => {
-  if (!isViaShare.value && isOwner.value) return t('knowledgeBase.accessInfo.permissionOwner')
-  const perm = effectiveKBPermission.value
-  if (perm === 'admin') return t('knowledgeBase.accessInfo.permissionAdmin')
-  if (perm === 'editor') return t('knowledgeBase.accessInfo.permissionEditor')
-  if (perm === 'viewer') return t('knowledgeBase.accessInfo.permissionViewer')
-  return '--'
-})
-
 type RoleTheme = 'success' | 'primary' | 'warning' | 'default'
-const roleTagTheme = computed<RoleTheme>(() => {
-  if (!isViaShare.value && isOwner.value) return 'success'
-  const perm = effectiveKBPermission.value
-  if (perm === 'admin') return 'primary'
-  if (perm === 'editor') return 'warning'
-  return 'default'
-})
+const roleTagTheme = computed<RoleTheme>(() => isOwner.value ? 'success' : authStore.hasRole('admin') ? 'primary' : 'default')
 
 // KB.UpdatedAt is auto-bumped by GORM only when the KB row itself is
 // touched (rename, config edit, …). For a freshly created KB whose

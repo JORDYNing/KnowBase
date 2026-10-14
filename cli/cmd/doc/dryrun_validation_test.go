@@ -43,7 +43,7 @@ func docDryRunFactory(t *testing.T) *cmdutil.Factory {
 // registers the global persistent flags (mirrors addGlobalFlags in
 // cmd/root.go).
 func withRootHarnessDoc(sub *cobra.Command, args ...string) *cobra.Command {
-	root := &cobra.Command{Use: "weknora"}
+	root := &cobra.Command{Use: "gamelib"}
 	pf := root.PersistentFlags()
 	pf.BoolP("yes", "y", false, "")
 	pf.String("format", "", "")

@@ -28,7 +28,6 @@ type knowledgeTagService struct {
 	ownership      retriever.TenantStoreOwnership
 	modelService   interfaces.ModelService
 	task           interfaces.TaskEnqueuer
-	kbShareService interfaces.KBShareService
 	tenantRepo     interfaces.TenantRepository
 	audit          interfaces.AuditLogService
 }
@@ -43,7 +42,6 @@ func NewKnowledgeTagService(
 	ownership retriever.TenantStoreOwnership,
 	modelService interfaces.ModelService,
 	task interfaces.TaskEnqueuer,
-	kbShareService interfaces.KBShareService,
 	tenantRepo interfaces.TenantRepository,
 	audit interfaces.AuditLogService,
 ) (interfaces.KnowledgeTagService, error) {
@@ -56,7 +54,6 @@ func NewKnowledgeTagService(
 		ownership:      ownership,
 		modelService:   modelService,
 		task:           task,
-		kbShareService: kbShareService,
 		tenantRepo:     tenantRepo,
 		audit:          audit,
 	}, nil
@@ -82,7 +79,7 @@ func (s *knowledgeTagService) ListTags(
 		return nil, err
 	}
 
-	effectiveTenantID, err := resolveKBReadTenant(ctx, kb, s.kbShareService)
+	effectiveTenantID, err := resolveKBReadTenant(ctx, kb)
 	if err != nil {
 		return nil, err
 	}

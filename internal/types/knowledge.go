@@ -334,7 +334,6 @@ type ManualKnowledgePayload struct {
 	ProcessConfig *KnowledgeProcessOverrides `json:"process_config,omitempty"`
 }
 
-// KnowledgeSearchScope defines a (tenant_id, knowledge_base_id) scope for knowledge search (e.g. own KBs + shared KBs).
 type KnowledgeSearchScope struct {
 	TenantID uint64
 	KBID     string

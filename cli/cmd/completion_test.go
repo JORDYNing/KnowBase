@@ -21,7 +21,7 @@ func TestCompletion_AllShells(t *testing.T) {
 	}{
 		{"bash", "bash completion", 1024},
 		{"zsh", "#compdef", 1024},
-		{"fish", "complete -c weknora", 1024},
+		{"fish", "complete -c gamelib", 1024},
 		{"powershell", "Register-ArgumentCompleter", 1024},
 	}
 	for _, tc := range cases {

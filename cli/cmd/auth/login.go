@@ -26,11 +26,11 @@ var authLoginFields = []string{
 // LoginOptions is the configuration captured from flags + prompts. Host and
 // Profile are resolved from the active profile in config (not from flags) -
 // `auth login` authenticates the already-existing active profile, created
-// beforehand with `weknora profile add <name> --host <h> --use`.
+// beforehand with `gamelib profile add <name> --host <h> --use`.
 type LoginOptions struct {
 	Host        string // resolved from the active profile's Host in config
 	Profile     string // resolved active profile name (honors global --profile)
-	WithToken   bool   // --with-token: read api key from stdin instead of prompting password
+	WithToken   bool   // --with-token: read an API key from stdin
 	APIKey      string // populated by --with-token from stdin
 	Email       string
 	Password    string
@@ -65,22 +65,22 @@ var defaultAPIKeyValidator apiKeyValidator = func(ctx context.Context, host, api
 	return resp.Data.User, nil
 }
 
-// NewCmdLogin builds the `weknora auth login` command. runF is the testable
+// NewCmdLogin builds the `gamelib auth login` command. runF is the testable
 // entrypoint (left nil for production; see cli/cmd/auth/login_test.go).
 func NewCmdLogin(f *cmdutil.Factory, runF func(context.Context, *LoginOptions, *cmdutil.FormatOptions, *cmdutil.Factory, LoginService) error) *cobra.Command {
 	opts := &LoginOptions{}
 	cmd := &cobra.Command{
 		Use:   "login",
-		Short: "Authenticate the active profile against its WeKnora server",
-		Long: `Authenticate the active profile by email + password (interactive prompt) or
-pipe an API key with --with-token.
+		Short: "Authenticate the active profile against its Gamelib server",
+		Long: `Authenticate the active profile by piping an API key with --with-token.
+People sign in through Feishu in the web application; password login is disabled.
 
 ` + "`auth login`" + ` operates on the active profile (override with the global
 --profile flag). Create the profile first with
-` + "`weknora profile add <name> --host <h> --use`" + `, then run ` + "`weknora auth login`" + `.
+` + "`gamelib profile add <name> --host <h> --use`" + `, then run ` + "`gamelib auth login`" + `.
 
 Credentials are persisted to the OS keyring when available; otherwise to a
-0600 file under $XDG_CONFIG_HOME/weknora/secrets.`,
+0600 file under $XDG_CONFIG_HOME/gamelib/secrets.`,
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			fopts, err := cmdutil.CheckFormatFlag(c)
@@ -99,15 +99,15 @@ Credentials are persisted to the OS keyring when available; otherwise to a
 			return runLogin(c.Context(), opts, fopts, f, nil)
 		},
 	}
-	cmd.Flags().BoolVar(&opts.WithToken, "with-token", false, "Read an API key from stdin instead of prompting for password")
+	cmd.Flags().BoolVar(&opts.WithToken, "with-token", false, "Read an API key from stdin")
 	cmdutil.AddFormatFlag(cmd, authLoginFields...)
 	cmdutil.SetAgentHelp(cmd, cmdutil.AgentHelp{
 		UsedFor:  "authenticate the active profile; --with-token reads an API key from stdin (non-interactive)",
-		Examples: []string{`echo "$WEKNORA_API_KEY" | weknora auth login --with-token`},
+		Examples: []string{`echo "$GAMELIB_API_KEY" | gamelib auth login --with-token`},
 		Output:   "envelope.data is {profile, host, mode, email, tenant_id} on success (email matches `auth status`)",
 		Warnings: []string{
-			"a profile must exist and be active first (`weknora profile add <n> --host <url> --use`)",
-			"password login is interactive-only (no flags) — agents must use --with-token with the key piped to stdin",
+			"a profile must exist and be active first (`gamelib profile add <n> --host <url> --use`)",
+			"use --with-token with an API key piped to stdin; people sign in through Feishu in the web application",
 		},
 	})
 	return cmd
@@ -119,7 +119,7 @@ Credentials are persisted to the OS keyring when available; otherwise to a
 // add`'s job. Returns typed errors when no active profile is configured or
 // the profile lacks a host.
 func resolveActiveProfile(f *cmdutil.Factory) (name, host string, err error) {
-	// f.Config() already folds the global --profile / WEKNORA_PROFILE override
+	// f.Config() already folds the global --profile / GAMELIB_PROFILE override
 	// into cfg.CurrentProfile (same source f.ActiveProfile reads), so one load
 	// resolves the active profile — matches logout/refresh.
 	cfg, err := f.Config()
@@ -128,10 +128,10 @@ func resolveActiveProfile(f *cmdutil.Factory) (name, host string, err error) {
 	}
 	active := cfg.CurrentProfile
 	if active == "" {
-		msg := "no active profile; run `weknora profile add <name> --host <h> --use` first"
+		msg := "no active profile; run `gamelib profile add <name> --host <h> --use` first"
 		if envActive, kind := cmdutil.EnvCredential(); envActive {
 			msg = "no active profile to log in — you are already authenticated this session via " + kind +
-				"; `auth login` only persists a named profile, so run `weknora profile add <name> --host <h> --use` first if you want one"
+				"; `auth login` only persists a named profile, so run `gamelib profile add <name> --host <h> --use` first if you want one"
 		}
 		return "", "", cmdutil.NewError(cmdutil.CodeAuthUnauthenticated, msg)
 	}
@@ -166,9 +166,6 @@ func runLogin(ctx context.Context, opts *LoginOptions, fopts *cmdutil.FormatOpti
 	}
 	opts.Profile = name
 	opts.Host = host
-	if svc == nil {
-		svc = loginServiceFor(host)
-	}
 
 	if err := validateHost(opts.Host); err != nil {
 		return err
@@ -197,7 +194,7 @@ func runLogin(ctx context.Context, opts *LoginOptions, fopts *cmdutil.FormatOpti
 			// Transport errors (connection refused, DNS failure) must not be
 			// surfaced as auth.bad_credential — the key may be fine but the
 			// host is unreachable. Classify via WrapHTTP so network errors
-			// get CodeNetworkError and the hint points at `weknora doctor`.
+			// get CodeNetworkError and the hint points at `gamelib doctor`.
 			if cmdutil.ClassifyHTTPError(err) == cmdutil.CodeNetworkError {
 				return cmdutil.Wrapf(cmdutil.CodeNetworkError, err, "validate API key: check host reachability")
 			}
@@ -206,42 +203,8 @@ func runLogin(ctx context.Context, opts *LoginOptions, fopts *cmdutil.FormatOpti
 		return persistAPIKey(opts, fopts, f, user)
 	}
 
-	// Interactive: prompt for email + password. svc is always set by now
-	// (loginServiceFor returns non-nil because resolveActiveProfile guarantees
-	// a non-empty host).
-	if opts.Email == "" || opts.Password == "" {
-		p := f.Prompter()
-		if opts.Email == "" {
-			email, err := p.Input("Email", "")
-			if err != nil {
-				return cmdutil.Wrapf(cmdutil.CodeInputMissingFlag, err, "email prompt")
-			}
-			opts.Email = email
-		}
-		if opts.Password == "" {
-			pw, err := p.Password("Password")
-			if err != nil {
-				return cmdutil.Wrapf(cmdutil.CodeInputMissingFlag, err, "password prompt")
-			}
-			opts.Password = pw
-		}
-	}
-
-	resp, err := svc.Login(ctx, sdk.LoginRequest{Email: opts.Email, Password: opts.Password})
-	if err != nil {
-		// Transport errors (connection refused, DNS failure) must not be
-		// surfaced as auth.bad_credential — credentials may be fine but the
-		// host is unreachable. Classify so network errors get CodeNetworkError.
-		if cmdutil.ClassifyHTTPError(err) == cmdutil.CodeNetworkError {
-			return cmdutil.Wrapf(cmdutil.CodeNetworkError, err, "login: check host reachability")
-		}
-		return cmdutil.Wrapf(cmdutil.CodeAuthBadCredential, err, "login")
-	}
-	if !resp.Success || resp.Token == "" {
-		return cmdutil.NewError(cmdutil.CodeAuthBadCredential, fmt.Sprintf("login refused: %s", resp.Message))
-	}
-
-	return persistJWT(opts, fopts, f, resp)
+	return cmdutil.NewError(cmdutil.CodeInputMissingFlag,
+		"password login is disabled; sign in through Feishu in the web application, or pipe an API key with --with-token")
 }
 
 // persistAPIKey saves the --with-token API key and writes the profile.
@@ -381,8 +344,8 @@ func warnOnFileFallback(store secrets.Store) {
 	if _, isFile := store.(*secrets.FileStore); !isFile {
 		return
 	}
-	fmt.Fprintln(iostreams.IO.Err, "warning: OS keychain unavailable - credentials will be saved to a 0600 file under $XDG_CONFIG_HOME/weknora/secrets/.")
-	fmt.Fprintln(iostreams.IO.Err, "         install / unlock the keyring (or use `weknora doctor` to inspect) for OS-backed storage.")
+	fmt.Fprintln(iostreams.IO.Err, "warning: OS keychain unavailable - credentials will be saved to a 0600 file under $XDG_CONFIG_HOME/gamelib/secrets/.")
+	fmt.Fprintln(iostreams.IO.Err, "         install / unlock the keyring (or use `gamelib doctor` to inspect) for OS-backed storage.")
 }
 
 // readStdinTrimmed reads all of r and returns the result with surrounding

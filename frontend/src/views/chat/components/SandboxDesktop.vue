@@ -30,7 +30,6 @@ import { useSandboxDesktop } from '@/composables/useSandboxDesktop'
 const props = defineProps<{
   sessionId: string
   agentId?: string
-  agentSourceTenantId?: string | number | null
 }>()
 
 const { t } = useI18n()
@@ -39,7 +38,6 @@ const screenRef = ref<HTMLElement | null>(null)
 const desktop = useSandboxDesktop(
   toRef(props, 'sessionId'),
   toRef(props, 'agentId'),
-  toRef(props, 'agentSourceTenantId'),
 )
 const status = desktop.status
 

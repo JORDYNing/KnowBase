@@ -16,6 +16,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 )
 
 // -----------------------------------------------------------------------------
@@ -227,58 +228,16 @@ func TestDownloadMessageArtifact_SessionNotOwnedReturns404(t *testing.T) {
 	}
 }
 
-func TestDownloadMessageArtifact_SourceStorageAndShareRevocation(t *testing.T) {
+func TestDownloadMessageArtifactRejectsForeignFile(t *testing.T) {
 	const ref = "resource://AbCdEfGhIjKlMnOpQrStUv"
-	const physical = "local://7/exports/report.pdf"
-	shares := &resolveAgentShareStub{agent: &types.CustomAgent{ID: "agent", TenantID: 7}}
-	ownerFiles := &fakeArtifactFileService{url: physical, data: []byte("PDF-BYTES")}
-	globalFiles := &fakeArtifactFileService{}
-	h := &Handler{
-		sessionService: &stubSessionServiceForArtifacts{
-			getSession: func(context.Context, string) (*types.Session, error) {
-				return &types.Session{ID: "sess-1", TenantID: 42}, nil
-			},
-		},
-		messageService: &stubMessageServiceForArtifacts{
-			getMessage: func(context.Context, string, string) (*types.Message, error) {
-				return &types.Message{
-					ID: "msg-1", AgentID: "agent", AgentTenantID: 7,
-					Artifacts: types.MessageArtifacts{{URL: ref, FileName: "report.pdf"}},
-				}, nil
-			},
-		},
-		agentShareService: shares,
-		resourceCatalog: &artifactCatalogStub{resource: &types.StoredResource{
-			TenantID: 7, PhysicalPath: physical, StorageBackendID: "backend-7",
-		}},
-		tenantService:   &artifactTenantStub{t: t},
-		storageResolver: &artifactStorageStub{t: t, file: ownerFiles},
-		fileService:     globalFiles,
-	}
-	router := newArtifactTestRouter(h)
-	request := func() *httptest.ResponseRecorder {
-		w := httptest.NewRecorder()
-		router.ServeHTTP(
-			w,
-			httptest.NewRequest(http.MethodGet, "/sessions/sess-1/messages/msg-1/artifacts/0/download", nil),
-		)
-		return w
-	}
-	w := request()
-	if w.Code != http.StatusOK || w.Body.String() != "PDF-BYTES" ||
-		w.Header().Get("Cache-Control") != "private, no-store" {
-		t.Fatalf("status=%d body=%q cache=%q", w.Code, w.Body.String(), w.Header().Get("Cache-Control"))
-	}
-	shares.agent = nil
-	w = request()
-	if w.Code != http.StatusNotFound || ownerFiles.calls != 1 || globalFiles.calls != 0 {
-		t.Fatalf(
-			"revoked artifact: status=%d owner reads=%d global reads=%d",
-			w.Code,
-			ownerFiles.calls,
-			globalFiles.calls,
-		)
-	}
+	h := &Handler{fileService: &fakeArtifactFileService{}, sessionService: &stubSessionServiceForArtifacts{getSession: func(context.Context, string) (*types.Session, error) {
+		return &types.Session{ID: "sess-1", TenantID: 42}, nil
+	}}, messageService: &stubMessageServiceForArtifacts{getMessage: func(context.Context, string, string) (*types.Message, error) {
+		return &types.Message{ID: "msg-1", AgentTenantID: 7, Artifacts: types.MessageArtifacts{{URL: ref}}}, nil
+	}}, resourceCatalog: &artifactCatalogStub{resource: &types.StoredResource{TenantID: 7, PhysicalPath: "local://7/exports/report.pdf"}}}
+	w := httptest.NewRecorder()
+	newArtifactTestRouter(h).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/sessions/sess-1/messages/msg-1/artifacts/0/download", nil))
+	require.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestDownloadMessageArtifact_IndexOutOfRange(t *testing.T) {

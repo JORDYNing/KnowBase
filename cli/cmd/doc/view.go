@@ -29,14 +29,14 @@ type ViewService interface {
 	GetKnowledge(ctx context.Context, id string) (*sdk.Knowledge, error)
 }
 
-// NewCmdView builds `weknora doc view <id>`.
+// NewCmdView builds `gamelib doc view <id>`.
 func NewCmdView(f *cmdutil.Factory) *cobra.Command {
 	opts := &ViewOptions{}
 	cmd := &cobra.Command{
 		Use:   "view <doc-id>",
 		Short: "Show a document by ID",
-		Example: `  weknora doc view doc_abc
-  weknora doc view doc_abc --format json`,
+		Example: `  gamelib doc view doc_abc
+  gamelib doc view doc_abc --format json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			fopts, err := cmdutil.CheckFormatFlag(c)
@@ -56,7 +56,7 @@ func NewCmdView(f *cmdutil.Factory) *cobra.Command {
 	cmdutil.SetAgentHelp(cmd, cmdutil.AgentHelp{
 		UsedFor:       "fetch one document's metadata by id",
 		RequiredFlags: []string{"<doc-id> (positional)"},
-		Examples:      []string{"weknora doc view doc_abc", "weknora doc view doc_abc --jq .data.parse_status"},
+		Examples:      []string{"gamelib doc view doc_abc", "gamelib doc view doc_abc --jq .data.parse_status"},
 		Output:        "envelope.data is the document object (id, file_name, parse_status, ...)",
 	})
 	return cmd

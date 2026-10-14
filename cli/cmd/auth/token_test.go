@@ -24,8 +24,8 @@ func tokenTestFactory(t *testing.T, cfg *config.Config, store *secrets.MemStore)
 }
 
 // TestAuthToken_DefaultIsRawToken locks the scripting contract: with no
-// explicit --format, `weknora auth token` emits the raw token (so
-// WEKNORA_TOKEN=$(weknora auth token) works), NOT the JSON envelope — even
+// explicit --format, `gamelib auth token` emits the raw token (so
+// GAMELIB_TOKEN=$(gamelib auth token) works), NOT the JSON envelope — even
 // though the global --format default is json. Explicit --format json still
 // emits the {token,mode,profile} envelope (covered by the JSON test below).
 func TestAuthToken_DefaultIsRawToken(t *testing.T) {

@@ -228,7 +228,7 @@ Gamelib 允许不同 KB 使用不同 embedding 模型（维度各异），各引
 
 查询向量生成后会与模型配置的维度比对。不一致时（如模型服务更换了输出维度）直接返回错误码 2201，详情包含模型名、期望维度与实际维度，提示检查 Embedding 模型配置并重建索引；不会继续发往向量库后得到含糊的失败或空结果。
 
-检索侧的一致性由 `validateSameEmbeddingModel`（`knowledgebase_search_shared.go`）保证：一次多库检索中的所有 KB 必须共享同一 embedding 模型身份（`model.Name + BaseURL`，跨租户可等价），否则拒绝——避免跨向量空间的分数不可比。查询向量按模型身份分组只计算一次（`ResolveEmbeddingModelKeys` + `GetQueryEmbedding`），随 `params.QueryEmbedding` 传播到所有 store 组，杜绝重复 embedding API 调用。
+检索侧的一致性由 `validateSameEmbeddingModel`（`knowledgebase_search_shared.go`）保证：一次多库检索中的所有 KB 必须共享同一 embedding 模型身份（`model.Name + BaseURL`），且各 KB 必须属于当前授权空间，否则拒绝——避免跨向量空间的分数不可比。查询向量按模型身份分组只计算一次（`ResolveEmbeddingModelKeys` + `GetQueryEmbedding`），随 `params.QueryEmbedding` 传播到所有 store 组，杜绝重复 embedding API 调用。
 
 ### 混合检索打分与归一化 {#_5-混合检索打分与归一化}
 

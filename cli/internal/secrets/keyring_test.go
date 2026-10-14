@@ -63,5 +63,22 @@ func TestNewBestEffortStore(t *testing.T) {
 func TestKeyringStore_Ref(t *testing.T) {
 	k := NewKeyringStore()
 	got := k.Ref("prod", "access")
-	assert.Equal(t, "keychain://weknora/prod/access", got)
+	assert.Equal(t, "keychain://gamelib/prod/access", got)
+}
+
+func TestKeyringStore_IgnoresOldNamespaceAndPreservesIt(t *testing.T) {
+	keyring.MockInit()
+	t.Cleanup(func() { keyring.MockInit() })
+	require.NoError(t, keyring.Set("weknora:prod", "access", "old-token"))
+	k := NewKeyringStore()
+	_, err := k.Get("prod", "access")
+	require.ErrorIs(t, err, ErrNotFound)
+	require.NoError(t, k.Set("prod", "access", "new-token"))
+	got, err := keyring.Get("gamelib:prod", "access")
+	require.NoError(t, err)
+	assert.Equal(t, "new-token", got)
+	require.NoError(t, k.Delete("prod", "access"))
+	got, err = keyring.Get("weknora:prod", "access")
+	require.NoError(t, err)
+	assert.Equal(t, "old-token", got)
 }

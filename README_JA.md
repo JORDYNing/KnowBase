@@ -318,7 +318,7 @@ docker compose up -d    # 新しいイメージでコンテナを再作成
 
 | | クライアント | 用途 |
 |:-:|------------|------|
-| <img src="./docs/images/readme/icons/terminal.svg" width="22" height="22" alt=""> | [**CLI `weknora`**](./cli/README.md) | Agent ファーストのコマンドライン。API 全体を扱え、厳選した MCP ツールと同梱の Agent Skills を提供 |
+| <img src="./docs/images/readme/icons/terminal.svg" width="22" height="22" alt=""> | [**CLI `gamelib`**](./cli/README.md) | Agent ファーストのコマンドライン。API 全体を扱え、厳選した MCP ツールと同梱の Agent Skills を提供 |
 | <img src="./docs/images/readme/icons/plug.svg" width="22" height="22" alt=""> | **組み込み MCP Server** | Streamable HTTP でナレッジベースを Cursor、Claude などの MCP クライアントに公開。[`mcp-server/`](./mcp-server/MCP_CONFIG.md) の Python サーバーは非推奨 |
 | <img src="./website-docs/homepage/public/docs/_home/brands/browserskill.png" width="22" height="22" alt=""> | **ローカルブラウザ（BrowserSkill）** | エージェントがユーザー自身の Chrome / Edge を操作 |
 | <img src="./website-docs/homepage/public/docs/_home/brands/chrome.svg" width="22" height="22" alt=""> | [**Chrome 拡張機能**](https://chromewebstore.google.com/detail/jpemjbopikggjlmikmclgbmkhhopjdgd) | テキスト、画像、ページ全体を選択してワンクリックでナレッジエントリとして保存。コピペやファイルアップロードは不要 |
@@ -331,18 +331,18 @@ docker compose up -d    # 新しいイメージでコンテナを再作成
 
 ### コマンドラインツール
 
-`weknora` は、ターミナルや AI エージェントから API を操作するための公式 CLI です。**Agent ファースト**の設計で、すべてのコマンドは既定で安定した JSON エンベロープを出力し（型付きエラーコードは終了コードに対応）、`--format text` で人間向けに表示します。厳選した MCP ツール（`weknora mcp serve`）も提供し、Agent Skills を同梱しています。
+`gamelib` は、ターミナルや AI エージェントから API を操作するための公式 CLI です。**Agent ファースト**の設計で、すべてのコマンドは既定で安定した JSON エンベロープを出力し（型付きエラーコードは終了コードに対応）、`--format text` で人間向けに表示します。厳選した MCP ツール（`gamelib mcp serve`）も提供し、Agent Skills を同梱しています。
 
 ```bash
-weknora profile add prod --host https://kb.example.com --use
-weknora auth login
-weknora kb list
-weknora link --kb my-knowledge-base    # 現在のディレクトリを紐づけ
-weknora doc upload notes.md
-weknora chat "設計ドキュメントを要約して"
+gamelib profile add prod --host https://kb.example.com --use
+gamelib auth login
+gamelib kb list
+gamelib link --kb my-knowledge-base    # 現在のディレクトリを紐づけ
+gamelib doc upload notes.md
+gamelib chat "設計ドキュメントを要約して"
 ```
 
-ヘッドレス / CI 環境では `WEKNORA_API_KEY` と `WEKNORA_HOST` を設定すれば `auth login` は不要で、資格情報はディスクに書き込まれません。インストールと 5 分間のクイックスタートは [`cli/README.md`](./cli/README.md)、AI エージェントが依存する運用上の約束は [`cli/AGENTS.md`](./cli/AGENTS.md) を参照してください。
+ヘッドレス / CI 環境では `GAMELIB_API_KEY` と `GAMELIB_HOST` を設定すれば `auth login` は不要で、資格情報はディスクに書き込まれません。インストールと 5 分間のクイックスタートは [`cli/README.md`](./cli/README.md)、AI エージェントが依存する運用上の約束は [`cli/AGENTS.md`](./cli/AGENTS.md) を参照してください。
 
 ## ドキュメント
 

@@ -8,21 +8,8 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
-// AuthorizeKBAccess rejects multi-KB searches whose scope includes a KB
-// that the original caller is not entitled to read. Exact upstream grants
-// support shared KB/agent execution; other foreign KBs need an organization
-// permission check for the caller via KBPermissions, applying the 3-D cap
-// (share role + caller's tenant-org role + tenant Viewer cap) introduced
-// in Plan 3 of #1303.
-//
-// Returning NotFound rather than Forbidden avoids leaking the existence
-// of unauthorized KB IDs that the caller could not otherwise observe.
-// Structured logs record the rejection with the offending kb_id (always
-// safe — KB IDs are UUIDs without sensitive content) and the requesting
-// tenant for audit.
 func AuthorizeKBAccess(
 	ctx context.Context,
-	shares KBShareLookup,
 	kbs []*types.KnowledgeBase,
 ) error {
 	if len(kbs) == 0 {
@@ -38,16 +25,16 @@ func AuthorizeKBAccess(
 	}
 
 	requestTenantID := types.CallerFromContext(ctx).TenantID
-	permissions := NewKBPermissions(ctx, shares)
+	permissions := NewKBPermissions(ctx)
 
 	for _, kb := range kbs {
-		hasPermission, permErr := permissions.Check(kb.ID, kb.TenantID, types.OrgRoleViewer)
+		hasPermission, permErr := permissions.Check(kb.ID, kb.TenantID, types.KBPermissionRead)
 		if permErr != nil {
 			logger.ErrorWithFields(ctx, permErr, map[string]interface{}{
 				"caller_tenant_id": requestTenantID,
 				"kb_tenant_id":     kb.TenantID,
 				"kb_id":            kb.ID,
-				"reason":           "shared-KB permission lookup failed",
+				"reason":           "knowledge base permission check failed",
 			})
 			return apperrors.NewInternalServerError("failed to verify knowledge base access")
 		}

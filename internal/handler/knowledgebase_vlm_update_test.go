@@ -32,17 +32,6 @@ func (s *vlmUpdateKBService) UpdateKnowledgeBase(
 	return s.kb, nil
 }
 
-type vlmUpdateShareStub struct {
-	interfaces.KBShareService
-	permission types.OrgMemberRole
-}
-
-func (s *vlmUpdateShareStub) CheckTenantKBPermission(
-	context.Context, string, uint64, types.TenantRole,
-) (types.OrgMemberRole, bool, error) {
-	return s.permission, true, nil
-}
-
 // PUT /knowledge-bases/:id admits share editors through KBAccessWrite, but the
 // VLM model is a KB setting: like PUT /initialization/config, only the owner
 // workspace or an admin share may change it.
@@ -51,21 +40,20 @@ func TestUpdateKnowledgeBaseVLMConfigRequiresSettingsAccess(t *testing.T) {
 	cases := []struct {
 		name        string
 		ownerTenant uint64
-		permission  types.OrgMemberRole
+		permission  types.KBPermission
 		body        string
 		wantStatus  int
 	}{
-		{"share editor with vlm_config", 2, types.OrgRoleEditor, withVLM, http.StatusForbidden},
-		{"share editor without vlm_config", 2, types.OrgRoleEditor, `{"name":"n"}`, http.StatusOK},
-		{"share admin with vlm_config", 2, types.OrgRoleAdmin, withVLM, http.StatusOK},
+		{"foreign workspace with vlm_config", 2, types.KBPermissionWrite, withVLM, http.StatusForbidden},
+		{"foreign workspace without vlm_config", 2, types.KBPermissionWrite, `{"name":"n"}`, http.StatusForbidden},
+		{"foreign workspace with settings permission", 2, types.KBPermissionAdmin, withVLM, http.StatusForbidden},
 		{"owner workspace with vlm_config", 1, "", withVLM, http.StatusOK},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			gin.SetMode(gin.TestMode)
 			svc := &vlmUpdateKBService{kb: &types.KnowledgeBase{ID: "kb-1", TenantID: tc.ownerTenant}}
-			shares := &vlmUpdateShareStub{permission: tc.permission}
-			h := &KnowledgeBaseHandler{service: svc, kbShareService: shares}
+			h := &KnowledgeBaseHandler{service: svc}
 			enabled := true
 			r := gin.New()
 			r.Use(middleware.ErrorHandler(), func(c *gin.Context) {
@@ -76,7 +64,7 @@ func TestUpdateKnowledgeBaseVLMConfigRequiresSettingsAccess(t *testing.T) {
 				c.Next()
 			})
 			r.PUT("/:id", middleware.RequireKBAccess(
-				middleware.KBIDFromParam("id"), types.OrgRoleEditor, svc, shares, nil,
+				middleware.KBIDFromParam("id"), types.KBPermissionWrite, svc,
 				&config.Config{Tenant: &config.TenantConfig{EnableRBAC: &enabled}},
 			), h.UpdateKnowledgeBase)
 

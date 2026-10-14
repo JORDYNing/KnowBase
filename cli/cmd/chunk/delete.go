@@ -62,12 +62,12 @@ and writes input.confirmation_required to stderr. NEVER auto-pass -y
 without the user's explicit go-ahead — the exit-10 protocol exists
 exactly to guard against unintended deletes.`
 
-const chunkDeleteExample = `  weknora chunk delete chunk_abc --doc doc_xyz                  # interactive confirm
-  weknora chunk delete chunk_abc --doc doc_xyz -y               # no prompt
-  weknora chunk delete chunk_abc --doc doc_xyz -y --format json # bare {id, deleted:true} JSON
-  weknora chunk delete c1 c2 c3 --doc doc_xyz -y                # delete 3 chunks under same doc, keep-going`
+const chunkDeleteExample = `  gamelib chunk delete chunk_abc --doc doc_xyz                  # interactive confirm
+  gamelib chunk delete chunk_abc --doc doc_xyz -y               # no prompt
+  gamelib chunk delete chunk_abc --doc doc_xyz -y --format json # bare {id, deleted:true} JSON
+  gamelib chunk delete c1 c2 c3 --doc doc_xyz -y                # delete 3 chunks under same doc, keep-going`
 
-// NewCmdDelete builds `weknora chunk delete <chunk-id> [<chunk-id>...] --doc <doc-id>`.
+// NewCmdDelete builds `gamelib chunk delete <chunk-id> [<chunk-id>...] --doc <doc-id>`.
 func NewCmdDelete(f *cmdutil.Factory) *cobra.Command {
 	opts := &DeleteOptions{}
 	cmd := &cobra.Command{
@@ -100,7 +100,7 @@ func NewCmdDelete(f *cmdutil.Factory) *cobra.Command {
 				opts.ChunkID = args[0]
 				return runDelete(c.Context(), opts, fopts, cli, f.Prompter())
 			}
-			batchRetry := append([]string{"weknora", "chunk", "delete"}, args...)
+			batchRetry := append([]string{"gamelib", "chunk", "delete"}, args...)
 			batchRetry = append(batchRetry, "--doc", opts.DocID, "-y")
 			if err := cmdutil.ConfirmDestructiveBatch(f.Prompter(), opts.Yes, fopts.WantsJSON(), "delete", "chunk", len(args), "chunk.delete", batchRetry); err != nil {
 				return err
@@ -132,9 +132,9 @@ func NewCmdDelete(f *cmdutil.Factory) *cobra.Command {
 		UsedFor:       "permanently delete one or more chunks from a document",
 		RequiredFlags: []string{"<chunk-id>... (positional, at least one)", "--doc <doc-id>"},
 		Examples: []string{
-			"weknora chunk delete chunk_abc --doc doc_xyz -y",
-			"weknora chunk delete c1 c2 c3 --doc doc_xyz -y",
-			"weknora chunk delete chunk_abc --doc doc_xyz -y --format json",
+			"gamelib chunk delete chunk_abc --doc doc_xyz -y",
+			"gamelib chunk delete c1 c2 c3 --doc doc_xyz -y",
+			"gamelib chunk delete chunk_abc --doc doc_xyz -y --format json",
 		},
 		Output: "envelope.data shape depends on the form: a single chunk id -> {id, deleted:true}; multiple ids -> batch envelope (top-level status success|partial|error, ok=(failures==0), data per-item [{id, ok, error?}], meta.successes/failures — read data[].ok per id).",
 		Warnings: []string{
@@ -146,7 +146,7 @@ func NewCmdDelete(f *cmdutil.Factory) *cobra.Command {
 }
 
 func runDelete(ctx context.Context, opts *DeleteOptions, fopts *cmdutil.FormatOptions, svc DeleteService, p prompt.Prompter) error {
-	if err := cmdutil.ConfirmDestructive(p, opts.Yes, fopts.WantsJSON(), "delete", "chunk", opts.ChunkID, "chunk.delete", []string{"weknora", "chunk", "delete", opts.ChunkID, "--doc", opts.DocID, "-y"}); err != nil {
+	if err := cmdutil.ConfirmDestructive(p, opts.Yes, fopts.WantsJSON(), "delete", "chunk", opts.ChunkID, "chunk.delete", []string{"gamelib", "chunk", "delete", opts.ChunkID, "--doc", opts.DocID, "-y"}); err != nil {
 		return err
 	}
 	if err := svc.DeleteChunk(ctx, opts.DocID, opts.ChunkID); err != nil {

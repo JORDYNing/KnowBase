@@ -103,7 +103,6 @@ const EXTRA_PREFIXES = [
   'system.globalSettings.runtime.queueNames.',
   'system.globalSettings.runtime.queueDescriptions.',
   'system.globalSettings.runtime.tasks.taskTypes.',
-  'organization.role.',
   'inviteRegister.',
   'modelSettings.builtinModels.',
   // Image-attribute display text is keyed by the backend attribute registry

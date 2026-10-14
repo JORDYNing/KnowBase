@@ -8,14 +8,6 @@
           <span v-if="item.count !== undefined" class="scope-count">{{ item.count }}</span>
         </button>
       </div>
-      <t-select v-if="mode === 'resource' && spaceOptions.length" class="space-filter"
-        :value="selectedSpace" :options="spaceOptions" :placeholder="$t('listSpaceSidebar.spaces')"
-        :aria-label="$t('listSpaceSidebar.spaces')" filterable clearable
-        @change="(value: unknown) => $emit('update:modelValue', String(value || 'all'))">
-        <template #prefixIcon>
-          <ResourceIcon type="organization" :size="16" :class="{ 'space-filter-icon-active': !!selectedSpace }" />
-        </template>
-      </t-select>
     </div>
     <t-input :model-value="query" class="search-input" :placeholder="$t('menu.search')"
       :aria-label="$t('menu.search')" clearable @update:model-value="(value: unknown) => $emit('update:query', String(value ?? ''))">
@@ -25,45 +17,28 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useOrganizationStore } from '@/stores/organization'
-import ResourceIcon from '@/components/icons/ResourceIcon.vue'
 
 const props = withDefaults(defineProps<{
   modelValue: string
   query: string
-  mode?: 'resource' | 'organization'
   hideScopes?: boolean
   countAll?: number
   countMine?: number
   countFavorites?: number
   countRecents?: number
-  countCreated?: number
-  countJoined?: number
-  countByOrg?: Record<string, number>
-}>(), { mode: 'resource', hideScopes: false, countByOrg: () => ({}) })
+}>(), { hideScopes: false })
 defineEmits<{
   'update:modelValue': [value: string]
   'update:query': [value: string]
 }>()
 const { t } = useI18n()
-const orgStore = useOrganizationStore()
-const scopes = computed(() => props.mode === 'organization' ? [
-  { value: 'all', label: t('listSpaceSidebar.all'), count: props.countAll },
-  { value: 'created', label: t('organization.createdByMe'), count: props.countCreated },
-  { value: 'joined', label: t('organization.joinedByMe'), count: props.countJoined },
-] : [
+const scopes = computed(() => [
   { value: 'all', label: t('listSpaceSidebar.all'), count: props.countAll },
   { value: 'favorites', label: t('listSpaceSidebar.favorites'), count: props.countFavorites },
   { value: 'recents', label: t('listSpaceSidebar.recents'), count: props.countRecents },
-  { value: 'mine', label: t('listSpaceSidebar.workspace'), count: props.countMine },
 ])
-const selectedSpace = computed(() => scopes.value.some(s => s.value === props.modelValue) ? '' : props.modelValue)
-const spaceOptions = computed(() => (orgStore.organizations || [])
-  .filter(org => (props.countByOrg[org.id] ?? 0) > 0 || org.id === selectedSpace.value)
-  .map(org => ({ label: org.name, value: org.id })))
-onMounted(() => { if (!props.hideScopes) orgStore.fetchOrganizations() })
 </script>
 
 <style scoped lang="less">

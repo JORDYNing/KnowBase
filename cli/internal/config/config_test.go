@@ -21,12 +21,33 @@ func TestLoad_FileMissing(t *testing.T) {
 	assert.Empty(t, c.Profiles)
 }
 
+func TestLoad_IgnoresOldConfigAndPreservesIt(t *testing.T) {
+	dir := testutil.XDGTempDir(t)
+	oldPath := filepath.Join(dir, "weknora", "config.yaml")
+	oldData := []byte("current_profile: old\nprofiles:\n  old:\n    host: https://old.example.com\n")
+	require.NoError(t, os.MkdirAll(filepath.Dir(oldPath), 0o700))
+	require.NoError(t, os.WriteFile(oldPath, oldData, 0o600))
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.CurrentProfile)
+	assert.Empty(t, cfg.Profiles)
+
+	require.NoError(t, Save(&Config{CurrentProfile: "new"}))
+	cfg, err = Load()
+	require.NoError(t, err)
+	assert.Equal(t, "new", cfg.CurrentProfile)
+	got, err := os.ReadFile(oldPath)
+	require.NoError(t, err)
+	assert.Equal(t, oldData, got, "creating Gamelib config must preserve old data")
+}
+
 func TestSaveLoad_RoundTrip(t *testing.T) {
 	testutil.XDGTempDir(t)
 	in := &Config{
 		CurrentProfile: "prod",
 		Profiles: map[string]Profile{
-			"prod": {Host: "https://kb.example.com", TenantID: 7, APIKeyRef: "keychain://weknora/prod/access"},
+			"prod": {Host: "https://kb.example.com", TenantID: 7, APIKeyRef: "keychain://gamelib/prod/access"},
 		},
 	}
 	require.NoError(t, Save(in))
@@ -51,7 +72,7 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 
 func TestLoad_Corrupt(t *testing.T) {
 	dir := testutil.XDGTempDir(t)
-	p := filepath.Join(dir, "weknora", "config.yaml")
+	p := filepath.Join(dir, "gamelib", "config.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o700))
 	require.NoError(t, os.WriteFile(p, []byte("not: valid: yaml: ::"), 0o600))
 
@@ -65,7 +86,7 @@ func TestPath_HonorsXDG(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", xdg)
 	p, err := Path()
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(xdg, "weknora", "config.yaml"), p)
+	assert.Equal(t, filepath.Join(xdg, "gamelib", "config.yaml"), p)
 }
 
 func TestPath_FallsBackToHome(t *testing.T) {
@@ -75,7 +96,7 @@ func TestPath_FallsBackToHome(t *testing.T) {
 	require.NoError(t, err)
 	// Compare via slash-normalized form so the assertion is platform-agnostic
 	// (Windows uses backslash; semantics here is "the relative tail").
-	assert.Contains(t, filepath.ToSlash(p), "/.config/weknora/config.yaml")
+	assert.Contains(t, filepath.ToSlash(p), "/.config/gamelib/config.yaml")
 }
 
 func TestSave_AtomicReplace(t *testing.T) {
@@ -85,6 +106,6 @@ func TestSave_AtomicReplace(t *testing.T) {
 	out, err := Load()
 	require.NoError(t, err)
 	assert.Equal(t, "b", out.CurrentProfile)
-	matches, _ := filepath.Glob(filepath.Join(dir, "weknora", "*.tmp"))
+	matches, _ := filepath.Glob(filepath.Join(dir, "gamelib", "*.tmp"))
 	assert.Empty(t, matches)
 }

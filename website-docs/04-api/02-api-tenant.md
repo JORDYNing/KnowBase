@@ -10,7 +10,7 @@
 
 ### POST /api/v1/tenants
 
-用途：创建空间（自助开新工作区；调用者自动成为 Owner）。权限：任何已登录用户（可无空间）；API key 仅平台 key 且具 `system_tenants_manage`。Handler: `internal/handler/tenant.go`
+用途：平台管理创建空间。权限：具有 `CanAccessAllTenants` 的平台超管；API key 仅平台 key 且具 `system_tenants_manage`。普通成员与普通空间 Owner/Admin 不可调用。Handler: `internal/handler/tenant.go`
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -19,7 +19,7 @@
 
 跨空间超管可提交完整 `types.Tenant`（含 `storage_quota`、`status` 等）。
 
-响应：201 `{"success":true,"data":{Tenant}}`（配置允许时可能携带 `api_key`）。自助创建被禁用返回 403（code 2005），超配额返回 429。
+响应：201 `{"success":true,"data":{Tenant}}`（配置允许时可能携带 `api_key`）。普通用户调用返回 403（code 2005），旧自助创建设置不能重新开放入口。
 
 ```bash
 curl -X POST $BASE/api/v1/tenants -H "Authorization: Bearer $TOKEN" \
@@ -334,7 +334,7 @@ curl -X DELETE $BASE/api/v1/tenants/1/invitations/12 -H "Authorization: Bearer $
 
 ### POST /api/v1/tenants/:id/invite-links
 
-用途：创建分享链接（多次可用的注册邀请链接）。权限：Owner。Handler: `internal/handler/tenant_invite_link.go`
+用途：创建空间邀请链接。公开邀请注册已关闭，链接不能开通新账号；团队新账号通过飞书登录后走加入申请审批。权限：Owner。Handler: `internal/handler/tenant_invite_link.go`
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |

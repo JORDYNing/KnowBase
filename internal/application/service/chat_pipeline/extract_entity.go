@@ -22,7 +22,7 @@ type PluginExtractEntity struct {
 	modelService      interfaces.ModelService         // Model service for calling large language models
 	template          *types.PromptTemplateStructured // Template for generating prompts
 	knowledgeBaseRepo interfaces.KnowledgeBaseRepository
-	knowledgeService  interfaces.KnowledgeService // For shared KB document resolution
+	knowledgeService  interfaces.KnowledgeService // For authorized document resolution
 	knowledgeRepo     interfaces.KnowledgeRepository
 }
 
@@ -88,11 +88,9 @@ func (p *PluginExtractEntity) OnEvent(ctx context.Context,
 		kbIDSet[id] = struct{}{}
 	}
 
-	// If KnowledgeIDs is specified, retrieve them and collect their knowledge base IDs (include shared KB docs)
-	// Also build a mapping from KnowledgeID to KnowledgeBaseID
 	knowledgeToKBMap := make(map[string]string)
 	if len(chatManage.KnowledgeIDs) > 0 {
-		knowledges, err := p.knowledgeService.GetKnowledgeBatchWithSharedAccess(ctx, chatManage.TenantID, chatManage.KnowledgeIDs)
+		knowledges, err := p.knowledgeService.GetAuthorizedKnowledgeBatch(ctx, chatManage.TenantID, chatManage.KnowledgeIDs)
 		if err != nil {
 			logger.Errorf(ctx, "failed to get knowledges: %v", err)
 			return next()

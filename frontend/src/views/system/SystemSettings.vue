@@ -27,9 +27,6 @@
       - System admins                         → tag-input @change with
                                                  inline popconfirm per delta.
 
-    auth.registration_mode triggers an
-    inline t-popconfirm (same as Reset / bulk-apply) before persisting;
-    cancelling rolls the in-progress edit back to the canonical value.
   -->
   <div class="system-settings">
     <div class="section-header">
@@ -127,48 +124,6 @@
                   <span>{{ t('system.globalSettings.saving') }}</span>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <!-- Keep the reset request and its submit lock alive across tab changes. -->
-          <div v-show="activeSettingsSection === 'access'" class="setting-row setting-row--password-reset">
-            <div class="setting-info">
-              <div class="setting-label">
-                <span>{{ t('system.globalSettings.passwordReset.label') }}</span>
-                <t-tag theme="danger" variant="light" size="small" class="setting-badge">
-                  {{ t('system.globalSettings.badgeHighRisk') }}
-                </t-tag>
-              </div>
-              <p class="desc">{{ t('system.globalSettings.passwordReset.description') }}</p>
-            </div>
-            <div class="setting-control">
-              <ResetPasswordDialog v-model:visible="passwordResetVisible" :active="activeSettingsSection === 'access'"
-                @announced="saveAnnouncement = $event">
-                <t-button theme="danger" variant="text" class="password-reset-trigger">
-                  <template #icon><t-icon name="lock-on" /></template>
-                  {{ t('system.globalSettings.passwordReset.action') }}
-                </t-button>
-              </ResetPasswordDialog>
-            </div>
-          </div>
-
-          <div v-if="activeSettingsSection === 'access'" class="setting-row setting-row--create-user">
-            <div class="setting-info">
-              <div class="setting-label">
-                <span>{{ t('system.globalSettings.createUser.label') }}</span>
-                <t-tag theme="danger" variant="light" size="small" class="setting-badge">
-                  {{ t('system.globalSettings.badgeHighRisk') }}
-                </t-tag>
-              </div>
-              <p class="desc">{{ t('system.globalSettings.createUser.description') }}</p>
-            </div>
-            <div class="setting-control">
-              <CreateUserDialog v-model:visible="createUserVisible" @announced="saveAnnouncement = $event">
-                <t-button theme="primary" variant="text" class="create-user-trigger">
-                  <template #icon><t-icon name="user-add" /></template>
-                  {{ t('system.globalSettings.createUser.action') }}
-                </t-button>
-              </CreateUserDialog>
             </div>
           </div>
 
@@ -338,11 +293,9 @@ import {
   revokeSystemAdmin,
   type SystemSettingItem,
 } from '@/api/system'
-import CreateUserDialog from './CreateUserDialog.vue'
-import ResetPasswordDialog from './ResetPasswordDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDeploymentCapabilitiesStore } from '@/stores/deploymentCapabilities'
-import { PASSWORD_SPECIAL_CHARS } from '@/utils/passwordPolicy'
+import { isTeamSystemSetting } from '@/views/auth/teamAccessState'
 import { isSettingValueDirty, resolveCurrentSetting } from './systemSettingsEdit'
 
 const authStore = useAuthStore()
@@ -365,9 +318,6 @@ function keyLabel(k: string): string {
 function settingDescription(item: { key: string; description?: string }): string {
   const path = `system.globalSettings.keyDescriptions.${item.key}`
   if (te(path)) {
-    if (path === 'system.globalSettings.keyDescriptions.auth.complex_password_enabled') {
-      return t(path, { specialChars: PASSWORD_SPECIAL_CHARS }) as string
-    }
     return t(path) as string
   }
   return item.description ?? ''
@@ -376,12 +326,10 @@ function settingDescription(item: { key: string; description?: string }): string
 // Enum keys whose change triggers a whole-value inline popconfirm before
 // PUT. ssrf.whitelist is not here — it uses per-tag confirm instead.
 const HIGH_RISK_KEYS = new Set<string>([
-  'auth.registration_mode',
   'sandbox.docker_enabled',
 ])
 
 const HIGH_IMPACT_KEYS = new Set<string>([
-  'auth.registration_mode',
   'tenant.auto_create_api_key',
   'ssrf.whitelist',
   'sandbox.docker_enabled',
@@ -475,12 +423,7 @@ type SettingsSection = 'access' | 'tenant' | 'runtime' | 'security' | 'other'
 // unexpected key.
 const SETTINGS_SECTION_KEYS: Record<Exclude<SettingsSection, 'other'>, readonly string[]> = {
   access: [
-    'auth.registration_mode',
-    'auth.complex_password_enabled',
-    'auth.default_tenant_mode',
-    'tenant.self_service_creation_enabled',
-    'tenant.max_owned_per_user',
-  ],
+            ],
   tenant: [
     'tenant.default_storage_quota_gb',
     'tenant.auto_create_api_key',
@@ -528,7 +471,7 @@ const activeSectionDescription = computed(() =>
 function sectionTabLabel(section: SettingsSection): string {
   const count = section === 'other'
     ? unknownSettings.value.length
-    : SETTINGS_SECTION_KEYS[section].filter((key) => settingsByKey.value.has(key)).length + (section === 'access' ? 2 : 0)
+    : SETTINGS_SECTION_KEYS[section].filter((key) => settingsByKey.value.has(key)).length + (section === 'access' ? 1 : 0)
   return t(`system.globalSettings.sections.${section}.tab`, { count })
 }
 
@@ -556,12 +499,6 @@ function markSettingSaved(item: SystemSettingItem) {
 const adminEmails = ref<string[]>([])
 const adminEmailToId = ref<Record<string, string>>({})
 const adminBusy = ref(false)
-
-// Access-row popups each live in their own dialog component
-// (CreateUserDialog.vue / ResetPasswordDialog.vue, same Access row);
-// only their visibility is owned here.
-const passwordResetVisible = ref(false)
-const createUserVisible = ref(false)
 
 // Guards ssrf.whitelist while an async confirm roundtrip is in flight.
 const listConfirmBusyKey = ref<string | null>(null)
@@ -694,7 +631,7 @@ function minimumFor(item: SystemSettingItem): number {
 async function loadSettings() {
   loading.value = true
   try {
-    const list = await listSystemSettings()
+    const list = (await listSystemSettings()).filter(item => isTeamSystemSetting(item.key))
     settings.value = list
     // Reset edit values to the canonical state on every load — no
     // partial drafts survive a refresh, which avoids the "I came back

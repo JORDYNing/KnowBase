@@ -35,8 +35,8 @@ type BrowserSkillTool struct {
 	blocked    atomic.Pointer[string]
 }
 
-// BrowserSkillScope names the caller's browser. A shared agent runs in its
-// owner's workspace, but the browser stays paired to the member who asked.
+// BrowserSkillScope binds the browser to the authenticated caller and tenant,
+// independently of the execution context.
 func BrowserSkillScope(ctx context.Context) browserskill.Scope {
 	caller := types.CallerFromContext(ctx)
 	return browserskill.Scope{Tenant: caller.TenantID, User: caller.UserID}

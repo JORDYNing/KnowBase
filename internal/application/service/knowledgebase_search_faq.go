@@ -169,7 +169,7 @@ func (s *knowledgeBaseService) iterativeRetrieveWithDeduplication(ctx context.Co
 
 		// Batch fetch only new chunks
 		if len(newChunkIDs) > 0 {
-			newChunks, err := s.listChunksByIDWithShared(ctx, tenantID, newChunkIDs)
+			newChunks, err := s.listAuthorizedChunksByID(ctx, tenantID, newChunkIDs)
 			if err != nil {
 				logger.Warnf(ctx, "Failed to fetch chunks at iteration %d: %v", i+1, err)
 			} else {
@@ -260,10 +260,7 @@ func (s *knowledgeBaseService) filterByNegativeQuestions(ctx context.Context,
 		return chunks
 	}
 
-	// Batch fetch chunks to get negative questions. Shared-KB chunks belong to
-	// the sharing workspace; a tenant-scoped lookup missed them and the
-	// "not found, keep it" branch below let them bypass the filter.
-	allChunks, err := s.listChunksByIDWithShared(ctx, tenantID, chunkIDs)
+	allChunks, err := s.listAuthorizedChunksByID(ctx, tenantID, chunkIDs)
 	if err != nil {
 		logger.Warnf(ctx, "Failed to fetch chunks for negative question filtering: %v", err)
 		// If we can't fetch chunks, return original results

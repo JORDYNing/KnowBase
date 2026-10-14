@@ -40,7 +40,7 @@ DELETE /messages/{session_id}/{id}.
 
 Deleting an assistant message breaks the turn chain for follow-up
 references (session ask). Prefer deleting whole sessions
-(weknora session delete) unless you specifically need to redact one turn.
+(gamelib session delete) unless you specifically need to redact one turn.
 
 Typed exit codes:
   resource.not_found            no message with the given id under that session (exit 4)
@@ -52,16 +52,16 @@ and writes input.confirmation_required to stderr. NEVER auto-pass -y
 without the user's explicit go-ahead — the exit-10 protocol exists
 exactly to guard against unintended deletes.`
 
-// NewCmdDelete builds `weknora message delete <message-id> --session <session-id>`.
+// NewCmdDelete builds `gamelib message delete <message-id> --session <session-id>`.
 func NewCmdDelete(f *cmdutil.Factory) *cobra.Command {
 	opts := &DeleteOptions{}
 	cmd := &cobra.Command{
 		Use:   "delete <message-id> --session <session-id>",
 		Short: "Delete one message from a session (high-risk write)",
 		Long:  messageDeleteLong,
-		Example: `  weknora message delete msg_abc --session sess_xyz                  # interactive confirm
-  weknora message delete msg_abc --session sess_xyz -y               # no prompt
-  weknora message delete msg_abc --session sess_xyz -y --format json # agent / JSON form`,
+		Example: `  gamelib message delete msg_abc --session sess_xyz                  # interactive confirm
+  gamelib message delete msg_abc --session sess_xyz -y               # no prompt
+  gamelib message delete msg_abc --session sess_xyz -y --format json # agent / JSON form`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			fopts, err := cmdutil.CheckFormatFlag(c)
@@ -92,7 +92,7 @@ func NewCmdDelete(f *cmdutil.Factory) *cobra.Command {
 	cmdutil.SetAgentHelp(cmd, cmdutil.AgentHelp{
 		UsedFor:       "permanently delete one message from a session",
 		RequiredFlags: []string{"<message-id> (positional)", "--session <session-id>"},
-		Examples:      []string{"weknora message delete msg_abc --session sess_xyz -y"},
+		Examples:      []string{"gamelib message delete msg_abc --session sess_xyz -y"},
 		Output:        "envelope.data is {id, deleted:true}",
 		Warnings: []string{
 			"Requires explicit user approval (exit 10 / input.confirmation_required); never auto-add -y.",
@@ -103,7 +103,7 @@ func NewCmdDelete(f *cmdutil.Factory) *cobra.Command {
 }
 
 func runDelete(ctx context.Context, opts *DeleteOptions, fopts *cmdutil.FormatOptions, svc DeleteService, p prompt.Prompter) error {
-	if err := cmdutil.ConfirmDestructive(p, opts.Yes, fopts.WantsJSON(), "delete", "message", opts.MessageID, "message.delete", []string{"weknora", "message", "delete", opts.MessageID, "--session", opts.SessionID, "-y"}); err != nil {
+	if err := cmdutil.ConfirmDestructive(p, opts.Yes, fopts.WantsJSON(), "delete", "message", opts.MessageID, "message.delete", []string{"gamelib", "message", "delete", opts.MessageID, "--session", opts.SessionID, "-y"}); err != nil {
 		return err
 	}
 	if err := svc.DeleteMessage(ctx, opts.SessionID, opts.MessageID); err != nil {

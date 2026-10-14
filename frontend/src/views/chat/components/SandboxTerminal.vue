@@ -41,8 +41,6 @@ const props = defineProps<{
     sessionId: string;
     /** 当前会话选中的 agent：首次连接时后端按其配置自动创建沙箱。 */
     agentId?: string;
-    /** 共享智能体的来源空间，与聊天请求的 agent_source_tenant_id 一致。 */
-    agentSourceTenantId?: string | number | null;
 }>();
 
 const { t } = useI18n();
@@ -123,7 +121,6 @@ function xtermTheme(dark: boolean) {
 const terminal = useSandboxTerminal(
     toRef(props, 'sessionId'),
     toRef(props, 'agentId'),
-    toRef(props, 'agentSourceTenantId'),
 );
 const { status, sandboxMayBeReclaimed, reattachable } = terminal;
 

@@ -1,6 +1,6 @@
-# Changelog — `weknora` CLI
+# Changelog — `gamelib` CLI
 
-All notable changes to the `weknora` CLI (the binary under `cli/` in this
+All notable changes to the `gamelib` CLI (the binary under `cli/` in this
 repository) will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
@@ -13,6 +13,34 @@ CLI history before v0.3 is recorded in the project root
 ## [Unreleased]
 
 ### Breaking
+- **WeKnora CLI is now Gamelib CLI.** The only command name and default build
+  output are `gamelib` and `bin/gamelib`. Environment variables use `GAMELIB_*`
+  (including `GAMELIB_E2E_*`); the old command and `WEKNORA_*` variables are no
+  longer supported.
+- Config, file credentials, and cache move to `$XDG_CONFIG_HOME/gamelib/` and
+  `$XDG_CACHE_HOME/gamelib/` (default `~/.config/gamelib/` and
+  `~/.cache/gamelib/`). Project links use `.gamelib/project.yaml`; OS keyring
+  entries use `gamelib:<profile>` and `keychain://gamelib/<profile>/<key>`.
+  Old storage is never read, migrated, or deleted automatically.
+- Bundled skills are `gamelib-shared` and `gamelib-rag-search`; the MCP service
+  name and executable are `gamelib`. MCP tool names, JSON shapes, and exit
+  codes remain unchanged; Go module and SDK imports still use
+  `github.com/Tencent/WeKnora`.
+
+  Manual switch after building `gamelib` and placing it on `PATH`:
+  1. Recreate each profile with
+     `gamelib profile add <name> --host <url> --use`.
+  2. Authenticate with `gamelib auth login` (or
+     `printf '%s' "$GAMELIB_API_KEY" | gamelib auth login --with-token`) and
+     verify with `gamelib auth status`. Update scripts to `GAMELIB_*`.
+  3. Run `gamelib link --kb <name-or-id>` in each project directory.
+  4. Install the new skills with `gamelib skills install --dir <skills-dir>`
+     and update agent skill references to the new names. Old installed skills
+     remain on disk; retire their references manually.
+  5. Change each MCP host entry to `"gamelib": {"command": "gamelib",
+     "args": ["mcp", "serve"]}` and update any host-specific profile arguments
+     or `GAMELIB_*` environment variables. Configure new `GAMELIB_E2E_*`
+     repository secrets before running live CI tests.
 - `chat` and `session ask` now distinguish JSON from NDJSON: the default
   `--format json` buffers a bounded answer-event projection into one
   `{ok:true,data:{events:[...]}}` envelope; use `--format ndjson` for the
@@ -38,8 +66,8 @@ CLI history before v0.3 is recorded in the project root
   embedding model is bound); `kb create` hints the fix when it is false.
 - `model create` / `model update` / `model delete` (`update` rotates key /
   base-url in place, preserving the id).
-- Stateless env-credential auth: `WEKNORA_API_KEY` / `WEKNORA_TOKEN` +
-  `WEKNORA_HOST`, a zero-disk path for headless / agent use. `auth logout` now
+- Stateless env-credential auth: `GAMELIB_API_KEY` / `GAMELIB_TOKEN` +
+  `GAMELIB_HOST`, a zero-disk path for headless / agent use. `auth logout` now
   keeps the profile registered (use `profile remove` to delete it entirely).
 - `meta.total_count` on paginated list / search output (full result size before
   client-side `--limit` truncation).

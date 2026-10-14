@@ -867,7 +867,6 @@ function keyCapabilityLabels(key: TenantAPIKey): string[] {
     manage_web_search: t('integrations.api.capabilityManageWebSearch'),
     run_evaluations: t('integrations.api.capabilityRunEvaluations'),
     manage_members: t('integrations.api.capabilityManageMembers'),
-    manage_spaces: t('integrations.api.capabilityManageSpaces'),
     manage_tenant_settings: t('integrations.api.capabilityManageTenantSettings'),
   }
   return (key.capabilities ?? [])

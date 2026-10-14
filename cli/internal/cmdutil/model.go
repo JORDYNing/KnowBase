@@ -44,10 +44,10 @@ func ResolveModelRef(ctx context.Context, lister ModelLister, ref, wantType stri
 			msg = fmt.Sprintf("no %s model named %q", wantType, ref)
 		}
 		return "", NewError(CodeResourceNotFound, msg).
-			WithHint("discover models with `weknora model list`")
+			WithHint("discover models with `gamelib model list`")
 	default:
 		return "", NewError(CodeInputInvalidArgument,
 			fmt.Sprintf("%q matches %d models — pass the model id instead", ref, len(matches))).
-			WithHint("`weknora model list` shows the ids")
+			WithHint("`gamelib model list` shows the ids")
 	}
 }

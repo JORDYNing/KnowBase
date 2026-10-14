@@ -9,7 +9,7 @@
 | 沙箱配置列表/详情 | Viewer+；API Key 必须 full-access | Admin+；API Key 必须 full-access |
 | 沙箱实例清单、已安装技能及文件 | Admin+ | Admin+；API Key 必须 full-access |
 | 技能目录列表 | Viewer+，JWT | 目录增删、安装、包文件浏览需 Admin+；写组的 API Key 必须 full-access |
-| `/skills` 可用技能 | Viewer+，JWT | 只读，查询参数 sandbox_config_id；共享智能体另传 agent_id、agent_source_tenant_id |
+| `/skills` 可用技能 | Viewer+，JWT | 只读，查询参数 sandbox_config_id |
 | 会话交互终端 | 会话属主，仅登录 JWT | 取票据后建立 WebSocket |
 | `/me/env-vars*` | 已登录的当前调用者 | 仅修改自己，服务端推导身份；无额外管理员门槛，使用 Bearer JWT |
 
@@ -162,7 +162,7 @@ curl -N "$BASE/api/v1/sandbox-configs/cfg-1/skills/skill-1/install-events" \
 
 `GET /skills?sandbox_config_id=cfg-1` 返回可用于智能体的技能元数据 `{success,data:[{name,description}],skills_available}`，与管理员看到的全部安装记录不同。
 
-同时传 `agent_id` 和 `agent_source_tenant_id`（共享智能体的来源空间 ID）时，列出该共享智能体可 @ 的技能：沙箱配置取自智能体本身，忽略查询中的 `sandbox_config_id`；智能体技能范围为 `selected` 时只返回指定技能，禁用时返回空列表且 `skills_available:false`。调用者无权使用该智能体时返回 403。
+技能查询只使用当前空间中指定的沙箱配置；智能体的技能选择范围由调用方在已授权目录内过滤。
 
 ## 会话交互终端
 
@@ -187,7 +187,7 @@ WebSocket 握手，不走普通认证中间件：
 | --- | --- | --- |
 | `ticket` | 是 | 上一步取得的票据，绑定用户、空间、会话和签发时的 access token |
 | `provision` | 否 | `1` 表示允许创建或唤醒沙箱（可能计费）；省略时只连接正在运行的沙箱 |
-| `agent_id` / `agent_source_tenant_id` | 否 | 与 `provision=1` 一起使用，指定按哪个智能体（含共享智能体）的沙箱配置创建 |
+| `agent_id` | 否 | 与 `provision=1` 一起使用，指定当前空间智能体的沙箱配置 |
 | `cols` / `rows` | 否 | 初始终端尺寸 |
 | `pty_id` | 否 | 重新接上之前 `ready` 帧返回的 Shell 进程 |
 

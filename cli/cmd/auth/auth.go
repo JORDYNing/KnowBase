@@ -34,7 +34,7 @@ func modeFromRefs(apiKeyRef, tokenRef string) string {
 	}
 }
 
-// NewCmdAuth builds the `weknora auth` command tree and registers its
+// NewCmdAuth builds the `gamelib auth` command tree and registers its
 // subcommands. Called from cli/cmd/root.go.
 func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{

@@ -52,19 +52,22 @@ func (r *registrationSettingRepo) Upsert(_ context.Context, row *types.SystemSet
 	return nil
 }
 
-func TestValidateRegistrationModes(t *testing.T) {
+func TestTeamAuthenticationPoliciesAreFixed(t *testing.T) {
 	svc := &systemSettingService{repo: &registrationSettingRepo{}, cache: make(map[string]*types.SystemSetting)}
-	ctx := context.WithValue(context.Background(), types.UserIDContextKey, "system-admin")
-	for _, mode := range []string{"self_serve", "invite_register", "invite_only"} {
-		row, err := svc.Update(ctx, "auth.registration_mode", mode)
-		if err != nil {
-			t.Fatalf("mode %q rejected: %v", mode, err)
-		}
-		if len(row.Enum) != 3 || svc.GetString(ctx, "auth.registration_mode", "", "") != mode {
-			t.Fatalf("saved mode %q must be effective and expose all three choices", mode)
+	ctx := context.Background()
+	for _, mode := range []string{"self_serve", "invite_register", "invite_only", "unknown"} {
+		if _, err := svc.Update(ctx, "auth.registration_mode", mode); err == nil {
+			t.Fatalf("fixed registration policy accepted edit %q", mode)
 		}
 	}
-	if _, err := svc.Update(ctx, "auth.registration_mode", "unknown"); err == nil {
-		t.Fatal("unknown registration mode accepted")
+	if got := svc.GetString(ctx, "auth.registration_mode", "", "self_serve"); got != "invite_only" {
+		t.Fatalf("registration policy=%q", got)
 	}
+	if _, err := svc.Update(ctx, "auth.default_tenant_mode", "create_personal"); err == nil {
+		t.Fatal("personal provisioning was reopened")
+	}
+	if _, err := svc.Update(ctx, "tenant.self_service_creation_enabled", true); err == nil {
+		t.Fatal("human space creation was reopened")
+	}
+
 }

@@ -37,7 +37,7 @@ type ListService interface {
 	LoadMessages(ctx context.Context, sessionID string, limit int, beforeTime *time.Time, opts ...sdk.ResourceURLOptions) ([]sdk.Message, error)
 }
 
-// NewCmdList builds `weknora message list --session <id>`.
+// NewCmdList builds `gamelib message list --session <id>`.
 func NewCmdList(f *cmdutil.Factory) *cobra.Command {
 	opts := &ListOptions{}
 	cmd := &cobra.Command{
@@ -71,8 +71,8 @@ func NewCmdList(f *cmdutil.Factory) *cobra.Command {
 		UsedFor:       "List messages in a session. Use the assistant message id from the latest turn to chain follow-ups (session ask), or --before <oldest created_at> to page further back.",
 		RequiredFlags: []string{"--session <session-id>"},
 		Examples: []string{
-			"weknora message list --session sess_abc",
-			"weknora message list --session sess_abc --limit 100 --before 2026-06-01T00:00:00Z",
+			"gamelib message list --session sess_abc",
+			"gamelib message list --session sess_abc --limit 100 --before 2026-06-01T00:00:00Z",
 		},
 		Output: "envelope.data is an array of Message objects (id, session_id, role, content, is_completed, created_at); meta.count is the number returned. To page further back, re-run with --before <oldest created_at>; a batch shorter than --limit means the start of history was reached",
 	})

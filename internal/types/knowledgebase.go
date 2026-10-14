@@ -147,8 +147,6 @@ type KnowledgeBase struct {
 	IsProcessing bool `yaml:"is_processing"           json:"is_processing"           gorm:"-"`
 	// ProcessingCount indicates the number of knowledge items being processed (for document type knowledge bases)
 	ProcessingCount int64 `yaml:"processing_count"        json:"processing_count"        gorm:"-"`
-	// ShareCount indicates the number of organizations this knowledge base is shared with (not stored in database)
-	ShareCount int64 `yaml:"share_count"             json:"share_count"             gorm:"-"`
 	// CreatorName 是 CreatorID 对应用户的展示名（username / email 等），
 	// 仅在列表场景由 handler 批量回填，不落库；为空表示创建者无法解析（用户已删除、
 	// CreatorID 为空的老数据等）。前端用它在卡片来源徽章上做 mine vs workspace 的二分。

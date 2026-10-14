@@ -136,22 +136,20 @@ var registry = map[string]settingSpec{
 			"仅系统管理员可打开；打开后立即生效，无需重启。私有化单机且已挂载 daemon socket，或配置了带 TLS 的远程 tcp:// 时再启用。",
 	},
 	"auth.registration_mode": {
-		Type:     "string",
-		EnvName:  "", // No env fallback — handler passes cfg.Auth.RegistrationMode as default
-		Default:  "self_serve",
-		Enum:     []string{"self_serve", "invite_register", "invite_only"},
-		Category: "auth",
-		Description: "注册模式。self_serve = 开放注册；invite_register = 仅持有效邀请链接的新用户可注册；" +
-			"invite_only = 禁止注册，邀请仅供已有账号加入空间。保存后立即生效。",
+		Type:        "string",
+		EnvName:     "", // No env fallback — handler passes cfg.Auth.RegistrationMode as default
+		Default:     "invite_only",
+		Enum:        []string{"invite_only"},
+		Category:    "auth",
+		Description: "团队部署固定关闭密码及邀请注册，仅通过飞书认证创建账号。此兼容设置只读。",
 	},
 	"auth.default_tenant_mode": {
-		Type:     "string",
-		EnvName:  "WEKNORA_AUTH_DEFAULT_TENANT_MODE",
-		Default:  "create_personal",
-		Enum:     []string{"create_personal", "tenantless"},
-		Category: "auth",
-		Description: "公开注册成功后的默认空间策略。create_personal = 自动创建个人空间并设为 Owner；" +
-			"tenantless = 仅创建用户，等待接受邀请或主动创建空间。修改后只影响新注册用户。",
+		Type:        "string",
+		EnvName:     "WEKNORA_AUTH_DEFAULT_TENANT_MODE",
+		Default:     "tenantless",
+		Enum:        []string{"tenantless"},
+		Category:    "auth",
+		Description: "团队部署固定仅创建用户身份，审批通过后加入团队知识空间，不创建个人空间。此兼容设置只读。",
 	},
 	"auth.complex_password_enabled": {
 		Type:     "bool",
@@ -195,12 +193,11 @@ var registry = map[string]settingSpec{
 			"修改后立即生效。0 表示使用内置默认值 10；负数表示完全关闭限制（不建议在公开部署使用）。",
 	},
 	"tenant.self_service_creation_enabled": {
-		Type:     "bool",
-		EnvName:  "WEKNORA_TENANT_SELF_SERVICE_CREATION_ENABLED",
-		Default:  true,
-		Category: "tenant",
-		Description: "是否允许非超管用户主动创建空间。关闭后，普通用户只能通过邀请加入已有空间；" +
-			"跨空间超管仍可创建。修改后立即生效。",
+		Type:        "bool",
+		EnvName:     "WEKNORA_TENANT_SELF_SERVICE_CREATION_ENABLED",
+		Default:     false,
+		Category:    "tenant",
+		Description: "团队部署固定禁止用户创建知识空间，通过审批加入已有团队。此兼容设置只读。",
 	},
 	// tenant.default_storage_quota_gb is the default storage quota (in GB)
 	// applied to a newly-created tenant when the caller doesn't specify
@@ -614,7 +611,23 @@ func (s *systemSettingService) publishChange(ctx context.Context, key string) {
 // upstream business code (file upload, etc.) gets a usable answer
 // instead of a 500. This is the deliberate degradation policy spelled
 // out in the interface comment.
+func fixedTeamSetting(key string) (types.JSON, bool) {
+	switch key {
+	case "auth.registration_mode":
+		return types.JSON(`"invite_only"`), true
+	case "auth.default_tenant_mode":
+		return types.JSON(`"tenantless"`), true
+	case "tenant.self_service_creation_enabled":
+		return types.JSON(`false`), true
+	default:
+		return nil, false
+	}
+}
+
 func (s *systemSettingService) resolveRaw(ctx context.Context, key string) (raw types.JSON, fromDB bool) {
+	if value, fixed := fixedTeamSetting(key); fixed {
+		return value, true
+	}
 	spec, known := registry[key]
 	if s.loaded.Load() {
 		s.mu.RLock()
@@ -779,6 +792,13 @@ func (s *systemSettingService) List(ctx context.Context) ([]*types.SystemSetting
 
 	for _, key := range keys {
 		spec := registry[key]
+		if value, fixed := fixedTeamSetting(key); fixed {
+			row := s.virtualSetting(key, spec)
+			row.Value = value
+			out = append(out, row)
+			delete(byKey, key)
+			continue
+		}
 		if row := byKey[key]; row != nil {
 			row.Enum = spec.Enum
 			if isBootstrapDefaultRow(row, spec) {
@@ -811,6 +831,11 @@ func (s *systemSettingService) List(ctx context.Context) ([]*types.SystemSetting
 // Enriches the row with registry-side `Enum` for the same UI reason
 // as List.
 func (s *systemSettingService) Get(ctx context.Context, key string) (*types.SystemSetting, error) {
+	if value, fixed := fixedTeamSetting(key); fixed {
+		row := s.virtualSetting(key, registry[key])
+		row.Value = value
+		return row, nil
+	}
 	spec, ok := registry[key]
 	if !ok {
 		return nil, fmt.Errorf("unknown setting key %q", key)
@@ -881,17 +906,7 @@ func (s *systemSettingService) fallbackJSONForSpec(key string, spec settingSpec)
 			}
 		}
 	}
-	if key == "auth.registration_mode" {
-		mode := config.AuthRegistrationModeSelfServe
-		if s.cfg != nil && s.cfg.Auth != nil {
-			if configured := strings.TrimSpace(s.cfg.Auth.RegistrationMode); configured != "" {
-				mode = configured
-			}
-		}
-		if encoded, err := encodeForType(spec.Type, mode); err == nil {
-			return encoded
-		}
-	}
+
 	encoded, err := encodeDefault(spec)
 	if err != nil {
 		return types.JSON(`null`)
@@ -938,6 +953,9 @@ func jsonEqual(a, b types.JSON) bool {
 // Returns the persisted row (re-read from DB so updated_at /
 // last_modified_by are fresh).
 func (s *systemSettingService) Update(ctx context.Context, key string, rawValue any) (*types.SystemSetting, error) {
+	if _, fixed := fixedTeamSetting(key); fixed {
+		return nil, fmt.Errorf("setting %q is fixed by team workspace policy", key)
+	}
 	spec, ok := registry[key]
 	if !ok {
 		return nil, fmt.Errorf("unknown setting key %q", key)
@@ -1062,6 +1080,9 @@ func (s *systemSettingService) Update(ctx context.Context, key string, rawValue 
 // Unknown keys still 400 — we don't want a typo on the URL to silently
 // pretend it cleared something.
 func (s *systemSettingService) Reset(ctx context.Context, key string) error {
+	if _, fixed := fixedTeamSetting(key); fixed {
+		return fmt.Errorf("setting %q is fixed by team workspace policy", key)
+	}
 	spec, ok := registry[key]
 	if !ok {
 		return fmt.Errorf("unknown setting key %q", key)

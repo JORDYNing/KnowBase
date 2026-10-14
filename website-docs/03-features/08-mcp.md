@@ -55,7 +55,7 @@ MCP 管理页支持按服务名称和卡片显示的用途说明搜索。搜索�
 
 本地或私有存储请配置外部客户端可访问的 `APP_EXTERNAL_URL`，并确保反向代理转发 `/r/`。`resource://` 图片沿用有时效的 `/r/<token>` 链接；其他存储地址使用对应存储服务生成的 HTTP(S) URL。一次工具调用中同一资源只转换一次，返回链接不写回文档或会话记录。无法生成可访问链接时保留原引用，不中断文本结果。
 
-生成链接前会重新检查端点知识库范围、共享权限、资源所属空间和有效文档绑定，沿用知识库图片预览的权限规则；未限定知识库的端点按调用者可查看的知识库判断，因此 `ask` 通过智能体检索到的共享知识库图片同样可以转换；原始上传文件不会因为出现在结果文本中就获得下载链接。已有绑定的历史存储路径可以转换。对于缺少图片绑定的历史文档，需要由有权限的管理员重新解析文档，完成后重新检索；不能仅凭可编辑的正文或 `image_info` 自动补授文件权限。
+生成链接前会重新检查端点知识库范围、当前空间权限、资源所属空间和有效文档绑定，沿用知识库图片预览的权限规则；未限定知识库的端点也只能读取当前空间内已授权的知识库图片；原始上传文件不会因为出现在结果文本中就获得下载链接。已有绑定的历史存储路径可以转换。对于缺少图片绑定的历史文档，需要由有权限的管理员重新解析文档，完成后重新检索；不能仅凭可编辑的正文或 `image_info` 自动补授文件权限。
 
 > **`grep_chunks` 的召回有上限。** 它基于索引取候选，每次最多 30 条，再用正则筛选，所以返回的每条都匹配模式，但不保证穷尽：库里存在的匹配也可能没进候选池。容易漏的情况有三类：`foo.*bar` 这类组合模式，候选按 foo、bar 的相关度排序，真正相邻出现的分块可能排不进前 30；`C++` 这类几乎只剩符号的模式，抽出的字面词只有 `C`，在索引里几乎没有区分度；没有关键词索引的库改用语义索引取候选，字面匹配更依赖运气。旧实现对 chunks 表做全表正则扫描，能保证"有就能找到"，但数据量大时代价过高，已经移除。需要在某篇文档里穷尽查找时，用 `read_document` 的 `query`，它会顺序扫完整篇文档。
 
@@ -390,7 +390,7 @@ flowchart LR
 
 #### 内置（builtin）MCP 服务 {#_1-9-内置-builtin-mcp-服务}
 
-`mcp_services.is_builtin` 标记（migration `migrations/versioned/000017_mcp_builtin.up.sql` 引入）表示跨空间共享的内置服务：
+`mcp_services.is_builtin` 标记（migration `migrations/versioned/000017_mcp_builtin.up.sql` 引入）表示平台置备、全局可见的只读内置服务，与已移除的空间分享关系无关：
 
 - **可见性**：仓储层所有查询用 `tenant_id = ? OR is_builtin = true`（`internal/application/repository/mcp_service.go`），即 builtin 行对所有租户可见。
 - **不可变**：`UpdateMCPService` / `DeleteMCPService` / `UpdateMCPCredentials` / `ClearMCPCredential` 对 builtin 行一律拒绝（"builtin MCP services cannot be updated/deleted/have credentials modified"）。
@@ -444,7 +444,7 @@ flowchart LR
 - 全局只有一个 `MCPServer` 实例注册完整工具目录；`WithToolFilter` 按请求上下文里的端点过滤 `tools/list`，`WithToolHandlerMiddleware` 在 `tools/call` 再校验一次白名单并做每端点滑动窗口限流（Redis 优先，本地回退）。
 - 传输使用 `WithStateLess(true)`，任意副本都能处理任意请求，客户端无需保持 `Mcp-Session-Id`。
 - `ask` 工具的会话归属为 `mcp_endpoint:<tenant>:<endpoint>`，续聊时校验 `session_id` 属于同一端点；单次回答上限 4 分钟。
-- 文档级工具（列表、阅读、写入）先用 `access.ResolveKB` 解析权限，再在知识库所属空间下执行，因此组织分享过来的知识库也能读写，且新建文档落在所有者空间。
+- 文档级工具（列表、阅读、写入）先用 `access.ResolveKB` 校验当前空间权限，再在当前空间执行；外空间知识库不能读取或写入。
 
 #### 客户端配置示例
 
@@ -572,7 +572,7 @@ SSE 与 HTTP 传输由 `MCPAuthMiddleware`（ASGI 中间件）统一鉴权：客
 
 #### 暴露的 MCP 工具清单 {#_2-4-暴露的-mcp-工具清单}
 
-共 31 个工具，对应 `weknora_mcp_server.py` 中带 `@mcp.tool()` 装饰器的函数（参数列 `*` 表示 required；`GamelibClient.update_knowledge_base` 方法存在但**未注册**为工具）：
+共 30 个工具，对应 `weknora_mcp_server.py` 中带 `@mcp.tool()` 装饰器的函数（参数列 `*` 表示 required；`GamelibClient.update_knowledge_base` 方法存在但**未注册**为工具）：
 
 **租户管理**
 
@@ -587,7 +587,6 @@ SSE 与 HTTP 传输由 `MCPAuthMiddleware`（ASGI 中间件）统一鉴权：客
 |---|---|---|
 | `create_knowledge_base` | `name`\*, `description`\*, `embedding_model_id`, `summary_model_id` | 创建知识库；默认 chunking：`chunk_size` 1000、`chunk_overlap` 200、分隔符 `["."]`、开启 multimodal |
 | `list_knowledge_bases` | 无 | 列出当前租户自己的知识库 |
-| `list_shared_knowledge_bases` | 无 | 列出通过组织/共享空间授权给当前租户的知识库 |
 | `get_knowledge_base` | `kb_id`\* | 知识库详情 |
 | `delete_knowledge_base` | `kb_id`\* | 删除知识库 |
 | `hybrid_search` | `kb_id`\*, `query`\*, `vector_threshold`(0.5), `keyword_threshold`(0.3), `match_count`(5) | 向量 + 关键词混合检索；`kb_id` 支持 UUID **或名称**（`resolve_kb_id` 自动解析） |
@@ -645,7 +644,7 @@ SSE 与 HTTP 传输由 `MCPAuthMiddleware`（ASGI 中间件）统一鉴权：客
 | `wiki_read_page` | `kb_id`\*, `slug`\* | 按 slug 读取整页 Markdown、元数据与出入链 |
 | `wiki_index_view` | `kb_id`\*, `limit`(50) | 按类型（entity / concept / summary 等）分组的结构化 Wiki 索引 |
 
-便利特性：`resolve_kb_id` / `resolve_agent_id` 会把人类可读的名称（大小写不敏感）解析为 UUID，因此 `hybrid_search` / `chat` / `agent_chat` / `create_session` / `get_agent` 都同时接受名称与 UUID。名称解析会同时查自有知识库与共享知识库，共享库也能直接按名字引用；`resolve_agent_id` 允许非 UUID 形式的 Agent 标识。所有工具结果统一以格式化 JSON 的 `TextContent` 返回；异常被捕获并返回 `Error executing <name>: ...` 文本。
+便利特性：`resolve_kb_id` / `resolve_agent_id` 会把人类可读的名称（大小写不敏感）解析为 UUID，因此 `hybrid_search` / `chat` / `agent_chat` / `create_session` / `get_agent` 都同时接受名称与 UUID。知识库名称解析只查询当前 API Key 所在空间内可见的知识库；`resolve_agent_id` 允许非 UUID 形式的 Agent 标识。所有工具结果统一以格式化 JSON 的 `TextContent` 返回；异常被捕获并返回 `Error executing <name>: ...` 文本。
 
 #### 在 Claude Desktop 等客户端中配置 {#_2-5-在-claude-desktop-等客户端中配置}
 

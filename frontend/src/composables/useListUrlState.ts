@@ -8,7 +8,7 @@
 // one-line change for both pages.
 //
 // Schema:
-//   ?scope=<all|mine|shared|orgId>
+//   ?scope=<all|favorites|recents>
 //   ?creator=<all|mine|others>
 //   ?q=<text>
 //

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/api"
 	"github.com/Tencent/WeKnora/internal/types"
@@ -50,12 +51,7 @@ func (s *sessionService) resolveKnowledgeBases(
 
 	if hasExplicitMention {
 		logger.Infof(ctx, "Using request-specified targets: kbs=%v, docs=%v", kbIDs, knowledgeIDs)
-		// When using a shared agent, restrict @mentions to the agent's allowed KB scope
-		// to prevent users from injecting KB/knowledge IDs outside the agent's configured range.
-		if customAgent != nil && req.Session != nil && req.Session.TenantID != customAgent.TenantID {
-			kbIDs, knowledgeIDs = s.restrictMentionsToAgentScope(ctx, customAgent, req.Session.TenantID, kbIDs, knowledgeIDs)
-			req.TagScopes = s.restrictTagScopesToAgentScope(ctx, customAgent, req.Session.TenantID, req.TagScopes)
-		}
+
 	} else if customAgent != nil && customAgent.Config.RetrieveKBOnlyWhenMentioned {
 		kbIDs = nil
 		knowledgeIDs = nil
@@ -100,31 +96,6 @@ func (s *sessionService) questionOriginAnchor(
 	return kbID
 }
 
-func (s *sessionService) restrictTagScopesToAgentScope(
-	ctx context.Context,
-	agent *types.CustomAgent,
-	sessionTenantID uint64,
-	tagScopes []types.TagScope,
-) []types.TagScope {
-	if len(tagScopes) == 0 {
-		return nil
-	}
-	allowedKBIDs := s.resolveKnowledgeBasesFromAgent(ctx, agent, sessionTenantID)
-	allowedSet := make(map[string]bool, len(allowedKBIDs))
-	for _, id := range allowedKBIDs {
-		allowedSet[id] = true
-	}
-	filtered := make([]types.TagScope, 0, len(tagScopes))
-	for _, scope := range tagScopes {
-		if allowedSet[scope.KnowledgeBaseID] {
-			filtered = append(filtered, scope)
-			continue
-		}
-		logger.Warnf(ctx, "Blocking @mentioned tag scope for KB %s: not in shared agent's allowed scope", scope.KnowledgeBaseID)
-	}
-	return filtered
-}
-
 // resolveChatModelID resolves the effective chat model ID for a QA request.
 //
 // When a user-configured agent is selected, its model configuration must be
@@ -145,12 +116,6 @@ func (s *sessionService) resolveChatModelID(
 	customAgent := req.CustomAgent
 	session := req.Session
 	configuredAgentModelID := ""
-	// A shared agent runs in its owner's workspace, where an override could
-	// pick any of the owner's models rather than the one the agent was
-	// configured with.
-	if req.SharedAgentReadOnly {
-		summaryModelID = ""
-	}
 
 	if customAgent != nil {
 		configuredAgentModelID = strings.TrimSpace(customAgent.Config.ModelID)
@@ -188,25 +153,30 @@ func (s *sessionService) resolveChatModelID(
 }
 
 // resolveRetrievalTenantID determines the tenant ID to use for retrieval scope.
-// Priority: agent's tenant > context tenant > session tenant.
-func (s *sessionService) resolveRetrievalTenantID(
-	ctx context.Context,
-	req *types.QARequest,
-) uint64 {
-	session := req.Session
-	customAgent := req.CustomAgent
-
-	retrievalTenantID := session.TenantID
-	if customAgent != nil && customAgent.TenantID != 0 {
-		retrievalTenantID = customAgent.TenantID
-		logger.Infof(ctx, "Using agent tenant %d for retrieval scope", retrievalTenantID)
-	} else if v := ctx.Value(types.TenantIDContextKey); v != nil {
-		if tid, ok := v.(uint64); ok && tid != 0 {
-			retrievalTenantID = tid
-			logger.Infof(ctx, "Using effective tenant %d for retrieval from context", retrievalTenantID)
-		}
+// The authenticated caller takes precedence; trusted internal work uses its session tenant.
+func (s *sessionService) resolveRetrievalTenantID(ctx context.Context, req *types.QARequest) uint64 {
+	if tenant := types.CallerFromContext(ctx).TenantID; tenant != 0 {
+		return tenant
 	}
-	return retrievalTenantID
+	if req != nil && req.Session != nil {
+		return req.Session.TenantID
+	}
+	return 0
+}
+
+// validateQAWorkspace prevents agent/model execution from selecting a foreign workspace.
+func validateQAWorkspace(ctx context.Context, req *types.QARequest) error {
+	if req == nil || req.Session == nil || req.Session.TenantID == 0 {
+		return apperrors.NewBadRequestError("session workspace is required")
+	}
+	caller := types.CallerFromContext(ctx)
+	if caller.TenantID != 0 && caller.TenantID != req.Session.TenantID {
+		return apperrors.NewForbiddenError("session does not belong to caller workspace")
+	}
+	if req.CustomAgent != nil && req.CustomAgent.TenantID != req.Session.TenantID {
+		return apperrors.NewForbiddenError("agent does not belong to session workspace")
+	}
+	return nil
 }
 
 // applyAgentOverridesToChatManage applies custom agent configuration overrides
@@ -334,60 +304,4 @@ func (s *sessionService) applyAgentOverridesToChatManage(
 		cm.IntentPromptOverrides = customAgent.Config.IntentPrompts
 		logger.Infof(ctx, "Using custom agent's intent_prompts (%d overrides)", len(cm.IntentPromptOverrides))
 	}
-}
-
-// restrictMentionsToAgentScope filters user-provided @mention targets (KB IDs
-// and knowledge IDs) so that only those within the shared agent's allowed KB
-// scope are retained. This prevents users from bypassing the agent's
-// KBSelectionMode by injecting arbitrary KB/knowledge IDs into the request.
-func (s *sessionService) restrictMentionsToAgentScope(
-	ctx context.Context,
-	agent *types.CustomAgent,
-	sessionTenantID uint64,
-	kbIDs []string,
-	knowledgeIDs []string,
-) ([]string, []string) {
-	allowedKBIDs := s.resolveKnowledgeBasesFromAgent(ctx, agent, sessionTenantID)
-	if len(allowedKBIDs) == 0 {
-		logger.Warnf(ctx, "Shared agent has no allowed KBs, blocking all @mentions")
-		return nil, nil
-	}
-
-	allowedSet := make(map[string]bool, len(allowedKBIDs))
-	for _, id := range allowedKBIDs {
-		allowedSet[id] = true
-	}
-
-	filteredKBs := make([]string, 0, len(kbIDs))
-	for _, id := range kbIDs {
-		if allowedSet[id] {
-			filteredKBs = append(filteredKBs, id)
-		} else {
-			logger.Warnf(ctx, "Blocking @mentioned KB %s: not in shared agent's allowed scope", id)
-		}
-	}
-
-	filteredKnowledge := knowledgeIDs
-	if len(knowledgeIDs) > 0 {
-		knowledgeList, err := s.knowledgeService.GetKnowledgeBatch(ctx, agent.TenantID, knowledgeIDs)
-		if err != nil {
-			logger.Warnf(ctx, "Failed to validate knowledge IDs against agent scope: %v, blocking all", err)
-			filteredKnowledge = nil
-		} else {
-			filteredKnowledge = make([]string, 0, len(knowledgeList))
-			for _, k := range knowledgeList {
-				if k != nil && allowedSet[k.KnowledgeBaseID] {
-					filteredKnowledge = append(filteredKnowledge, k.ID)
-				} else if k != nil {
-					logger.Warnf(ctx, "Blocking @mentioned knowledge %s (KB %s): not in shared agent's allowed scope",
-						k.ID, k.KnowledgeBaseID)
-				}
-			}
-		}
-	}
-
-	logger.Infof(ctx, "Restricted @mentions to agent scope: kbs %d->%d, knowledge %d->%d",
-		len(kbIDs), len(filteredKBs), len(knowledgeIDs), len(filteredKnowledge))
-
-	return filteredKBs, filteredKnowledge
 }

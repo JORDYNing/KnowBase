@@ -268,15 +268,6 @@ func (h *Handler) openTerminal(
 	return h.terminalService.OpenSessionTerminal(ctx, sessionID, opts)
 }
 
-// terminalProvisionPin resolves the sandbox backend a confirmed create should
-// use. It goes through resolveAgent so a shared agent from another workspace
-// provisions the same way a chat turn would, instead of looking the agent up
-// only in the current tenant.
-//
-// The agent's workspace travels with its config id. Sandbox configs are keyed
-// by (tenant, id), so a shared agent's config simply does not exist in the
-// caller's own workspace — passing the id alone resolved to "config not found"
-// and the panel died with a bare INTERNAL frame.
 func (h *Handler) terminalProvisionPin(
 	ctx context.Context, c *gin.Context, allowProvision bool,
 ) service.SandboxPin {
@@ -287,7 +278,7 @@ func (h *Handler) terminalProvisionPin(
 	if agentID == "" {
 		return service.SandboxPin{}
 	}
-	agent, agentTenantID, _ := h.resolveAgent(
+	agent, agentTenantID := h.resolveAgent(
 		ctx, c, agentID, terminalTenantParam(c.Query("agent_source_tenant_id")))
 	if agent == nil {
 		return service.SandboxPin{}

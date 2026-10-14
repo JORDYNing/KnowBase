@@ -1,4 +1,4 @@
-// Package search implements the `weknora search` command tree:
+// Package search implements the `gamelib search` command tree:
 // chunks / kb / docs / sessions.
 package search
 
@@ -8,7 +8,7 @@ import (
 	"github.com/Tencent/WeKnora/cli/internal/cmdutil"
 )
 
-// NewCmdSearch builds the `weknora search` parent. Pure dispatcher to the
+// NewCmdSearch builds the `gamelib search` parent. Pure dispatcher to the
 // four subcommands - users must pick a verb (chunks / kb / docs / sessions).
 func NewCmdSearch(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
@@ -20,10 +20,10 @@ func NewCmdSearch(f *cmdutil.Factory) *cobra.Command {
   search kb       "<q>"            find KBs by name / description
   search docs     "<q>" --kb X     find documents inside a KB
   search sessions "<q>"            find chat sessions by title / description`,
-		Example: `  weknora search chunks "what is RAG?" --kb engineering
-  weknora search kb     "marketing"
-  weknora search docs   "Q3 forecast" --kb finance
-  weknora search sessions "onboarding"`,
+		Example: `  gamelib search chunks "what is RAG?" --kb engineering
+  gamelib search kb     "marketing"
+  gamelib search docs   "Q3 forecast" --kb finance
+  gamelib search sessions "onboarding"`,
 	}
 
 	cmd.AddCommand(NewCmdChunks(f))
@@ -42,6 +42,6 @@ func emptyContentSearchHint(n int) string {
 		return ""
 	}
 	return "0 results: this may be no match, OR the KB has no indexed chunks. " +
-		"Check `weknora kb status <kb>` (chunk_count) and `weknora doc list --kb <kb>` (parse_status); " +
-		"documents in parse_status=draft are not indexed — run `weknora doc reparse <doc-id>`."
+		"Check `gamelib kb status <kb>` (chunk_count) and `gamelib doc list --kb <kb>` (parse_status); " +
+		"documents in parse_status=draft are not indexed — run `gamelib doc reparse <doc-id>`."
 }

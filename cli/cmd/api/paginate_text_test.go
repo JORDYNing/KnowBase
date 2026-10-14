@@ -110,8 +110,8 @@ func TestAPI_PaginateFormats(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("WEKNORA_FORMAT", tc.env)
-			t.Setenv("WEKNORA_PROFILE", "")
+			t.Setenv("GAMELIB_FORMAT", tc.env)
+			t.Setenv("GAMELIB_PROFILE", "")
 			out, errOut := iostreams.SetForTest(t)
 			if tc.tty {
 				out, errOut = iostreams.SetForTestWithTTY(t)
@@ -209,7 +209,7 @@ func (w *paginationFailWriter) Write(p []byte) (int, error) {
 func TestAPI_PaginateTextWriteError(t *testing.T) {
 	for _, tail := range []bool{false, true} {
 		t.Run(strconv.FormatBool(tail), func(t *testing.T) {
-			t.Setenv("WEKNORA_PROFILE", "")
+			t.Setenv("GAMELIB_PROFILE", "")
 			iostreams.SetForTest(t)
 			sentinel := errors.New("synthetic output failure")
 			out := &paginationFailWriter{err: sentinel, tail: tail}

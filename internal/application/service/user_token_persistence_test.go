@@ -35,24 +35,12 @@ func persistedTestUser(t *testing.T, tenantID uint64, email, password string) *t
 // next request, and the client is told its session was revoked. Login must
 // therefore fail — and must not hand out the signed pair — when either insert
 // fails.
-func TestLoginFailsWhenTokensCannotBePersisted(t *testing.T) {
-	ctx := context.Background()
-	tokenRepo := &stubAuthTokenRepo{
-		tokens:     map[string]*types.AuthToken{},
-		createErrs: []error{errTokenWrite},
-	}
-	svc := newAuthTestUserService(tokenRepo)
-	user := persistedTestUser(t, 0, "user@example.com", "Secure9!")
-	svc.userRepo.(*stubUserRepoForAuth).users["user-1"] = user
+func TestPasswordLoginDoesNotIssueTokens(t *testing.T) {
+	svc := &userService{}
+	response, err := svc.Login(context.Background(), &types.LoginRequest{Email: "user@example.com", Password: "Secure9!"})
+	require.ErrorIs(t, err, ErrAlternativeLoginDisabled)
+	require.Nil(t, response)
 
-	resp, err := svc.Login(ctx, &types.LoginRequest{Email: user.Email, Password: "Secure9!"})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.False(t, resp.Success,
-		"login reported success although the token rows were never written")
-	require.Empty(t, resp.Token)
-	require.Empty(t, resp.RefreshToken)
-	require.Equal(t, "Login failed", resp.Message)
 }
 
 // Either half of the pair failing must abort issuance: both rows are checked

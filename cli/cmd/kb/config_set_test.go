@@ -103,7 +103,7 @@ func (s *readbackErrSvc) GetInitializationConfig(_ context.Context, _ string) (*
 // keyed off the sub's own name (unlike withRootHarnessKB which is hardcoded to
 // `update`).
 func withRootKB(sub *cobra.Command, args ...string) *cobra.Command {
-	root := &cobra.Command{Use: "weknora"}
+	root := &cobra.Command{Use: "gamelib"}
 	pf := root.PersistentFlags()
 	pf.BoolP("yes", "y", false, "")
 	pf.String("format", "", "")

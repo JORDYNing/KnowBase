@@ -9,13 +9,12 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/middleware"
 	"github.com/Tencent/WeKnora/internal/types"
-	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
 )
 
 // resolvedKBAccess reuses only a grant for this caller and this resource. A
 // Viewer grant cannot satisfy an Editor check after the tenant context switches.
-func resolvedKBAccess(c *gin.Context, kbID string, required types.OrgMemberRole) (*access.KBAccess, bool) {
+func resolvedKBAccess(c *gin.Context, kbID string, required types.KBPermission) (*access.KBAccess, bool) {
 	grant, ok := middleware.KBAccessFromContext(c)
 	return grant, ok && grant.KnowledgeBase != nil && grant.KnowledgeBase.ID == kbID &&
 		grant.Caller == middleware.KBAccessRequest(c).Caller &&
@@ -26,13 +25,11 @@ func resolvedKBAccess(c *gin.Context, kbID string, required types.OrgMemberRole)
 // resolve a single KB in route middleware. It always enforces access, preserving
 // the handler checks even when the middleware's RBAC rollout flag is disabled.
 func resolveHandlerKBAccess(c *gin.Context, kbID string, kbService middleware.KBLookup,
-	shares interfaces.KBShareService, agents interfaces.AgentShareService,
 ) (*access.KBAccess, error) {
-	return resolveHandlerKBAccessFor(c, kbID, kbService, shares, agents, types.OrgRoleViewer)
+	return resolveHandlerKBAccessFor(c, kbID, kbService, types.KBPermissionRead)
 }
 
-func resolveHandlerKBAccessFor(c *gin.Context, kbID string, kbService middleware.KBLookup,
-	shares interfaces.KBShareService, agents interfaces.AgentShareService, required types.OrgMemberRole,
+func resolveHandlerKBAccessFor(c *gin.Context, kbID string, kbService middleware.KBLookup, required types.KBPermission,
 ) (*access.KBAccess, error) {
 	ctx := c.Request.Context()
 	request := middleware.KBAccessRequest(c)
@@ -56,7 +53,7 @@ func resolveHandlerKBAccessFor(c *gin.Context, kbID string, kbService middleware
 		logger.ErrorWithFields(ctx, err, nil)
 		return nil, apperrors.NewInternalServerError(err.Error())
 	}
-	grant, err := access.ResolveKB(ctx, request, kb, required, shares, agents)
+	grant, err := access.ResolveKB(ctx, request, kb, required)
 	if err == nil {
 		// Preserve authorization for body-based routes without changing the
 		// execution tenant until the handler performs its resource operation.

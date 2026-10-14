@@ -4,7 +4,7 @@
 桌面应用目前没有随 Release 提供安装包，需按[安装部署](../01-getting-started/02-installation.md)自行构建。
 :::
 
-Gamelib Lite 桌面应用基于 [Wails v2](https://wails.io)，在桌面进程中运行 Go 后端，使用 SQLite 和本地文件存储。启动后可管理知识库并进行检索问答，无需 Docker 或外部数据库。源码位于 `cmd/desktop/`，基础能力与[单二进制 Lite](../01-getting-started/02-installation.md)一致；桌面版另外提供免登录启动，以及在 macOS 上运行智能体命令的[本机沙箱](../03-features/22-skills-sandbox.md#lite-host)。
+Gamelib Lite 桌面应用基于 [Wails v2](https://wails.io)，在桌面进程中运行 Go 后端，使用 SQLite 和本地文件存储。启动后可管理知识库并进行检索问答，无需 Docker 或外部数据库。源码位于 `cmd/desktop/`，基础能力与[单二进制 Lite](../01-getting-started/02-installation.md)一致；桌面版另外提供在 macOS 上运行智能体命令的[本机沙箱](../03-features/22-skills-sandbox.md#lite-host)。
 
 ## 总体架构 {#_1-总体架构}
 
@@ -88,7 +88,7 @@ flowchart LR
 | `GetDesktopListenPublicActive` | `(): Promise<boolean>` | 当前会话是否**实际**在所有网卡上监听（运行时状态，而非保存的偏好） |
 | `CheckForUpdates` | `(): Promise<void>` | 手动触发更新检查（有"已是最新"等对话框反馈） |
 | `AutoCheckForUpdates` | `(): Promise<void>` | 静默检查更新并自动后台下载 |
-| `GetAutoSetupToken` | `(): Promise<string>` | 返回本次进程的免登录凭据，前端用它调用 `POST /api/v1/auth/auto-setup` |
+| `GetAutoSetupToken` | `(): Promise<string>` | 历史绑定；当前前端不调用，服务端 `auto-setup` 已关闭 |
 | `PickProjectDir` | `(): Promise<string>` | 打开系统目录选择框，把选中的目录加入本机沙箱已批准列表并返回；取消时为空 |
 | `GetProjectDirs` | `(): Promise<string[]>` | 读取已批准的项目目录 |
 | `RemoveProjectDir` | `(dir: string): Promise<void>` | 从已批准列表移除一个目录 |
@@ -113,12 +113,11 @@ flowchart LR
 
 读写入口：`LoadDesktopPrefsHTTPPort()` / `LoadDesktopHTTPBindPublic()` / `SaveDesktopHTTPPortPreference()` / `SaveDesktopHTTPBindPublicPreference()`，以及本机沙箱用的 `LoadProjectDirs()` / `LoadApprovalMode()`，读取失败或解析失败时静默回退为零值。`project_dirs` 只能通过目录选择框（`PickProjectDir` 或 `POST /api/v1/system/host-project-dir`）追加，手工输入的路径不会被当作授权。
 
-## 免登录启动与签名密钥
+## 飞书登录与签名密钥
 
-桌面版启动时不需要注册或登录：
+桌面版与 Web 版使用同一套飞书认证和空间审批流程。新用户仅创建身份并自动申请加入 10000；桌面自动登录与本地个人空间初始化已关闭，原生绑定中的历史自动登录凭据不能绕过该规则。
 
-- 每次启动生成一个随机凭据，只通过 Wails 绑定 `GetAutoSetupToken` 交给内置前端。前端在请求头 `X-WeKnora-Desktop-Token` 中携带它调用 `POST /api/v1/auth/auto-setup`，首次调用创建默认用户 `admin@weknora.local` 和空间，之后直接签发登录令牌。没有该凭据的请求（包括局域网内的其他设备和普通浏览器）会被拒绝。
-- 未配置有效的 `SYSTEM_SIGNING_KEY`（或非默认值的 `SYSTEM_AES_KEY`）时，首次启动在偏好目录生成 `signing.key`（权限 `0600`）并作为 `SYSTEM_SIGNING_KEY` 使用，供文件预签名链接、网页嵌入会话等签名，重启后仍然有效。它只用于签名，不会替换加密已存凭据的 AES 密钥。
+未配置有效的 `SYSTEM_SIGNING_KEY`（或非默认值的 `SYSTEM_AES_KEY`）时，首次启动在偏好目录生成 `signing.key`（权限 `0600`）并作为 `SYSTEM_SIGNING_KEY` 使用，供文件预签名链接、网页嵌入会话等签名，重启后仍然有效。它只用于签名，不会替换加密已存凭据的 AES 密钥。
 
 ## 自动更新机制（cmd/desktop/update.go） {#_6-自动更新机制-cmd-desktop-update-go}
 

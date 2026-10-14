@@ -108,23 +108,23 @@ func TestRequireRoleOrSystemAdmin_RejectsOrdinaryViewer(t *testing.T) {
 	}
 }
 
-func TestRequireRole_FailOpenWhenRBACDisabled(t *testing.T) {
+func TestRequireRole_LegacyFlagCannotDisableEnforcement(t *testing.T) {
 	// EnableRBAC=false: the middleware should log but not block, so the
 	// downstream handler still runs. This is the rollout-safety guarantee.
 	w := rbacTestHarness(types.TenantRoleViewer, "u1",
 		RequireRole(types.TenantRoleOwner, cfgRBAC(false)))
-	if w.Code != http.StatusOK {
-		t.Fatalf("EnableRBAC=false must let Viewer through Owner gate, got %d", w.Code)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("EnableRBAC=false must not let Viewer through Owner gate, got %d", w.Code)
 	}
 }
 
-func TestRequireRole_NilConfigFailsOpen(t *testing.T) {
+func TestRequireRole_NilConfigFailsClosed(t *testing.T) {
 	// Defensive: nil config must not panic and must fail open (no enforcement
 	// configured = behave like the legacy path).
 	w := rbacTestHarness(types.TenantRoleViewer, "u1",
 		RequireRole(types.TenantRoleAdmin, nil))
-	if w.Code != http.StatusOK {
-		t.Fatalf("nil config must fail open, got %d", w.Code)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("nil config must fail closed, got %d", w.Code)
 	}
 }
 
@@ -263,7 +263,7 @@ func TestRequireOwnershipOrRole_NotFoundPassesThroughTo404(t *testing.T) {
 	}
 }
 
-func TestRequireOwnershipOrRole_SkipsLookupWhenRBACDisabled(t *testing.T) {
+func TestRequireOwnershipOrRole_LegacyFlagStillChecksOwnership(t *testing.T) {
 	// H1 regression: when enforcement is off, the lookup must not run at
 	// all. Hooking up RBAC pre-rollout used to add a hidden DB roundtrip
 	// to every mutating request even though the result was thrown away.
@@ -274,11 +274,11 @@ func TestRequireOwnershipOrRole_SkipsLookupWhenRBACDisabled(t *testing.T) {
 	}
 	w := rbacTestHarness(types.TenantRoleViewer, "u1",
 		RequireOwnershipOrRole(types.TenantRoleAdmin, lookup, cfgRBAC(false)))
-	if w.Code != http.StatusOK {
-		t.Fatalf("fail-open should let the request through, got %d", w.Code)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("legacy RBAC=false must not bypass ownership, got %d", w.Code)
 	}
-	if calls != 0 {
-		t.Fatalf("lookup must not run when EnableRBAC=false (got %d calls)", calls)
+	if calls != 1 {
+		t.Fatalf("lookup must run despite legacy EnableRBAC=false (got %d calls)", calls)
 	}
 }
 
@@ -317,26 +317,26 @@ func TestRequireOwnershipOrRole_CrossTenantSuperuserBypass(t *testing.T) {
 	}
 }
 
-func TestRequireOwnershipOrRole_FailOpenWhenRBACDisabled(t *testing.T) {
+func TestRequireOwnershipOrRole_LegacyFlagCannotBypassOwnership(t *testing.T) {
 	// Enforcement off: even a failing lookup + non-creator + low role lets
 	// the request through. This preserves today's "anyone in the tenant
 	// can edit anything" behaviour while we ship the schema.
 	lookup := func(c *gin.Context) (string, error) { return "someone-else", nil }
 	w := rbacTestHarness(types.TenantRoleViewer, "u1",
 		RequireOwnershipOrRole(types.TenantRoleAdmin, lookup, cfgRBAC(false)))
-	if w.Code != http.StatusOK {
-		t.Fatalf("EnableRBAC=false must let Viewer non-creator through, got %d", w.Code)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("EnableRBAC=false must reject Viewer non-creator, got %d", w.Code)
 	}
 }
 
-func TestRequireOwnershipOrRole_FailOpenOnLookupErrorWhenRBACDisabled(t *testing.T) {
+func TestRequireOwnershipOrRole_LegacyFlagCannotIgnoreLookupError(t *testing.T) {
 	// Lookup errors in fail-open mode also let the request through —
 	// otherwise turning RBAC off wouldn't actually unblock anything that
 	// needs the lookup.
 	lookup := func(c *gin.Context) (string, error) { return "", errors.New("boom") }
 	w := rbacTestHarness(types.TenantRoleViewer, "u1",
 		RequireOwnershipOrRole(types.TenantRoleAdmin, lookup, cfgRBAC(false)))
-	if w.Code != http.StatusOK {
-		t.Fatalf("EnableRBAC=false + lookup error must fail open, got %d", w.Code)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("EnableRBAC=false + lookup error must fail closed, got %d", w.Code)
 	}
 }

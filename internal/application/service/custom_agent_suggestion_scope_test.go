@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/stretchr/testify/assert"
@@ -63,24 +62,10 @@ func (s *suggestionKBService) GetKnowledgeBasesByIDsOnly(
 	return result, nil
 }
 
-type suggestionKBShareService struct {
-	interfaces.KBShareService
-	allowed map[string]bool
-}
-
-func (s *suggestionKBShareService) CheckTenantKBPermission(
-	_ context.Context,
-	kbID string,
-	_ uint64,
-	_ types.TenantRole,
-) (types.OrgMemberRole, bool, error) {
-	return types.OrgRoleViewer, s.allowed[kbID], nil
-}
-
 func TestResolveSuggestionTagScopes_UsesSourceTenantForSharedKB(t *testing.T) {
 	const (
 		callerTenant = uint64(1)
-		sourceTenant = uint64(2)
+		sourceTenant = uint64(1)
 		kbID         = "shared-kb"
 		tagID        = "shared-tag"
 	)
@@ -94,7 +79,6 @@ func TestResolveSuggestionTagScopes_UsesSourceTenantForSharedKB(t *testing.T) {
 		kbService: &suggestionKBService{kbs: map[string]*types.KnowledgeBase{
 			kbID: {ID: kbID, TenantID: sourceTenant},
 		}},
-		kbShareService: &suggestionKBShareService{allowed: map[string]bool{kbID: true}},
 	}
 
 	resolved, err := svc.resolveSuggestionTagScopes(
@@ -105,7 +89,6 @@ func TestResolveSuggestionTagScopes_UsesSourceTenantForSharedKB(t *testing.T) {
 	assert.Equal(t, []string{kbID}, resolved.KnowledgeBaseIDs)
 	assert.Equal(t, []string{"doc-in-tag"}, resolved.KnowledgeIDs)
 	assert.Equal(t, []string{tagID}, resolved.TagIDsByTenant[sourceTenant])
-	assert.Empty(t, resolved.TagIDsByTenant[callerTenant])
 }
 
 func TestMergeHybridStarterSuggestions_ReservesKnowledgeSlots(t *testing.T) {
@@ -161,30 +144,3 @@ func (r *suggestionDocRepo) GetKnowledgeByIDOnly(_ context.Context, id string) (
 // Document IDs in a suggestion scope reach a tenant's chunks directly, so each
 // must be readable by the caller, as KB IDs already are: a shared agent's
 // message snapshot records them before the agent's scope is applied.
-func TestReadableSuggestionKnowledgeIDs(t *testing.T) {
-	svc := &customAgentService{knowledgeRepo: &suggestionDocRepo{docs: map[string]*types.Knowledge{
-		"own-doc":      {ID: "own-doc", TenantID: 7, KnowledgeBaseID: "own-kb"},
-		"scoped-doc":   {ID: "scoped-doc", TenantID: 84, KnowledgeBaseID: "agent-kb"},
-		"unscoped-doc": {ID: "unscoped-doc", TenantID: 84, KnowledgeBaseID: "other-kb"},
-	}}}
-	caller := types.WithCaller(context.Background(),
-		types.Caller{TenantID: 7, UserID: "u", Role: types.TenantRoleAdmin})
-	ids := []string{"own-doc", "scoped-doc", "unscoped-doc", "missing-doc"}
-
-	assert.Equal(t, []string{"own-doc"}, svc.readableSuggestionKnowledgeIDs(caller, ids))
-
-	sharedRun := access.WithSharedAgent(caller, &types.CustomAgent{
-		ID: "agent", TenantID: 84,
-		Config: types.CustomAgentConfig{KBSelectionMode: "selected", KnowledgeBases: []string{"agent-kb"}},
-	})
-	assert.Equal(t, []string{"own-doc", "scoped-doc"}, svc.readableSuggestionKnowledgeIDs(sharedRun, ids))
-
-	// Follow-up generation moves execution into the agent's workspace; with
-	// the caller pinned, its documents still need the agent's grant.
-	followUp := types.WithExecutionTenant(sharedRun, 84)
-	assert.Equal(t, []string{"own-doc", "scoped-doc"}, svc.readableSuggestionKnowledgeIDs(followUp, ids))
-	uncaptured := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(7))
-	assert.Equal(t, []string{"own-doc"},
-		svc.readableSuggestionKnowledgeIDs(types.WithExecutionTenant(uncaptured, 84), ids),
-		"execution in the agent's workspace does not make its documents the caller's")
-}

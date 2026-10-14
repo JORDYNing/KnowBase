@@ -64,7 +64,6 @@ export interface APIPrincipalTestToken {
 //  - 'manage_web_search': manage web-search providers
 //  - 'run_evaluations': run/read evaluation jobs
 //  - 'manage_members': manage tenant members and invitations
-//  - 'manage_spaces': manage organization/space collaboration
 //  - 'manage_tenant_settings': read/update tenant integration settings (API principal mode, headers, tenant KV)
 export type TenantAPIKeyCapability =
   | 'retrieve'
@@ -83,7 +82,6 @@ export type TenantAPIKeyCapability =
   | 'manage_web_search'
   | 'run_evaluations'
   | 'manage_members'
-  | 'manage_spaces'
   | 'manage_tenant_settings'
   | 'system_tenants_read'
   | 'system_tenants_manage'
@@ -126,6 +124,24 @@ export interface UpdateTenantAPIKeyPayload {
   expires_at_unix?: number
 }
 
+/** Catalog operations are available only to cross-workspace platform managers. */
+async function requirePlatformWorkspaceManager(): Promise<void> {
+  const { useAuthStore } = await import('@/stores/auth')
+  if (!useAuthStore().canAccessAllTenants) {
+    throw Object.assign(new Error(t('platformWorkspaces.forbidden')), { status: 403 })
+  }
+}
+
+export interface CreateTenantPayload {
+  name: string
+  description?: string
+}
+
+export async function createTenant(payload: CreateTenantPayload): Promise<{ success: boolean; data?: TenantInfo; message?: string }> {
+  await requirePlatformWorkspaceManager()
+  return await post('/api/v1/tenants', payload) as unknown as { success: boolean; data?: TenantInfo; message?: string }
+}
+
 // 搜索空间参数
 export interface SearchTenantsParams {
   keyword?: string
@@ -151,6 +167,7 @@ export interface SearchTenantsResponse {
  * @deprecated 建议使用 searchTenants 代替，支持分页和搜索
  */
 export async function listAllTenants(): Promise<{ success: boolean; data?: { items: TenantInfo[] }; message?: string }> {
+  await requirePlatformWorkspaceManager()
   try {
     const response = await get('/api/v1/tenants/all')
     return response as unknown as { success: boolean; data?: { items: TenantInfo[] }; message?: string }
@@ -305,33 +322,8 @@ export async function deleteTenant(
   }
 }
 
-/**
- * 创建新工作区（任意已登录用户均可调用）。
- * 后端会自动把调用者写成新空间的 Owner，并填充默认 storage_quota
- * 等服务端字段；API Key 由用户在集成页手动创建。
- * 路由：POST /api/v1/tenants（router 上不挂 g.CrossTenant()，自助场景使用）。
- */
-export async function createTenant(
-  payload: { name: string; description?: string },
-): Promise<{ success: boolean; data?: TenantInfo; message?: string }> {
-  try {
-    const response = await post('/api/v1/tenants', payload)
-    return response as unknown as { success: boolean; data?: TenantInfo; message?: string }
-  } catch (error: any) {
-    const code = error?.error?.code ?? error?.code
-    return {
-      success: false,
-      message: code === 2005
-        ? t('tenant.create.disabled')
-        : (error.message || t('error.tenant.createFailed')),
-    }
-  }
-}
-
-/**
- * 搜索空间（支持分页、关键词搜索和空间ID过滤）
- */
 export async function searchTenants(params: SearchTenantsParams = {}): Promise<SearchTenantsResponse> {
+  await requirePlatformWorkspaceManager()
   try {
     const queryParams = new URLSearchParams()
     if (params.keyword) {

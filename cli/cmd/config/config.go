@@ -1,4 +1,4 @@
-// Package configcmd holds the `weknora config` command tree.
+// Package configcmd holds the `gamelib config` command tree.
 //
 // Currently a single read-only `view` subcommand that prints the resolved
 // CLI configuration and its resolution chain. No mutation, no network.
@@ -14,7 +14,7 @@ import (
 	"github.com/Tencent/WeKnora/cli/internal/cmdutil"
 )
 
-// NewCmd builds the `weknora config` parent command.
+// NewCmd builds the `gamelib config` parent command.
 func NewCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",

@@ -41,7 +41,7 @@ var kbCheckFields = []string{
 	"is_processing", "processing_count", "failed_count",
 }
 
-// NewCmdCheck builds `weknora kb check <id>`.
+// NewCmdCheck builds `gamelib kb check <id>`.
 func NewCmdCheck(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check <kb-id>",
@@ -52,11 +52,11 @@ Performs 1 + N HTTP calls:
   1   GET /kb/{id} — reachable + counts + processing state
   N   page-walk doc list with parse_status=failed — failed_count
 
-Use 'weknora kb status <id>' for a fast read-only health snapshot
+Use 'gamelib kb status <id>' for a fast read-only health snapshot
 (1 HTTP call, no failed_count). Use 'kb check' when you need
 verification including failed-doc aggregation.`,
-		Example: `  weknora kb check kb_abc
-  weknora kb check kb_abc --format json`,
+		Example: `  gamelib kb check kb_abc
+  gamelib kb check kb_abc --format json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			fopts, err := cmdutil.CheckFormatFlag(c)
@@ -79,7 +79,7 @@ verification including failed-doc aggregation.`,
 	cmdutil.SetAgentHelp(cmd, cmdutil.AgentHelp{
 		UsedFor:       "verify a knowledge base end-to-end: status plus failed-doc aggregation",
 		RequiredFlags: []string{"<kb-id> (positional)"},
-		Examples:      []string{"weknora kb check kb_abc"},
+		Examples:      []string{"gamelib kb check kb_abc"},
 		Output:        "envelope.data is {id, reachable, retrieval_ready, failed_count, ...}; retrieval_ready=false means no embedding model is bound (run `kb config set`); deeper than `kb status`",
 	})
 	return cmd

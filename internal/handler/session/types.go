@@ -53,11 +53,10 @@ type CreateKnowledgeQARequest struct {
 	// Selected knowledge ID for this request
 	KnowledgeIDs []string `json:"knowledge_ids"`
 	// Whether agent mode is enabled for this request
-	AgentEnabled bool `json:"agent_enabled"`
-	// Selected custom agent ID (backend resolves shared agent and its workspace from share relation)
-	AgentID string `json:"agent_id"`
-	// Optional disambiguator; backend still verifies the share relation
-	AgentSourceTenantID uint64 `json:"agent_source_tenant_id,omitempty"`
+	AgentEnabled bool   `json:"agent_enabled"`
+	AgentID      string `json:"agent_id"`
+	// Legacy selector; values outside the current workspace are rejected.
+	AgentSourceTenantID uint64 `json:"agent_source_tenant_id,omitempty" swaggerignore:"true"`
 	// Browser source
 	LocalBrowserEnabled bool `json:"local_browser_enabled"`
 	// Whether web search is enabled for this request

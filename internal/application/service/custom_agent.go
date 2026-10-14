@@ -36,14 +36,12 @@ const (
 
 // customAgentService implements the CustomAgentService interface
 type customAgentService struct {
-	repo           interfaces.CustomAgentRepository
-	chunkRepo      interfaces.ChunkRepository
-	kbService      interfaces.KnowledgeBaseService
-	kbShareService interfaces.KBShareService
-	wikiPageRepo   interfaces.WikiPageRepository
-	tagRepo        interfaces.KnowledgeTagRepository
-	knowledgeRepo  interfaces.KnowledgeRepository
-	agentShareRepo interfaces.AgentShareRepository
+	repo          interfaces.CustomAgentRepository
+	chunkRepo     interfaces.ChunkRepository
+	kbService     interfaces.KnowledgeBaseService
+	wikiPageRepo  interfaces.WikiPageRepository
+	tagRepo       interfaces.KnowledgeTagRepository
+	knowledgeRepo interfaces.KnowledgeRepository
 }
 
 // NewCustomAgentService creates a new custom agent service
@@ -51,21 +49,17 @@ func NewCustomAgentService(
 	repo interfaces.CustomAgentRepository,
 	chunkRepo interfaces.ChunkRepository,
 	kbService interfaces.KnowledgeBaseService,
-	kbShareService interfaces.KBShareService,
 	wikiPageRepo interfaces.WikiPageRepository,
 	tagRepo interfaces.KnowledgeTagRepository,
 	knowledgeRepo interfaces.KnowledgeRepository,
-	agentShareRepo interfaces.AgentShareRepository,
 ) interfaces.CustomAgentService {
 	return &customAgentService{
-		repo:           repo,
-		chunkRepo:      chunkRepo,
-		kbService:      kbService,
-		kbShareService: kbShareService,
-		wikiPageRepo:   wikiPageRepo,
-		tagRepo:        tagRepo,
-		knowledgeRepo:  knowledgeRepo,
-		agentShareRepo: agentShareRepo,
+		repo:          repo,
+		chunkRepo:     chunkRepo,
+		kbService:     kbService,
+		wikiPageRepo:  wikiPageRepo,
+		tagRepo:       tagRepo,
+		knowledgeRepo: knowledgeRepo,
 	}
 }
 
@@ -175,7 +169,6 @@ func (s *customAgentService) GetAgentByID(ctx context.Context, id string) (*type
 	return agent, nil
 }
 
-// GetAgentByIDAndTenant retrieves an agent by ID and tenant (for shared agents; does not resolve built-in)
 func (s *customAgentService) GetAgentByIDAndTenant(ctx context.Context, id string, tenantID uint64) (*types.CustomAgent, error) {
 	if id == "" {
 		logger.Error(ctx, "Agent ID is empty")
@@ -307,9 +300,7 @@ func (s *customAgentService) UpdateAgent(
 		}
 		existingAgent.Avatar = *avatar
 	}
-	if err := s.checkSharedAgentKBScope(ctx, existingAgent, agent.Config); err != nil {
-		return nil, err
-	}
+
 	existingAgent.Config = agent.Config
 	existingAgent.UpdatedAt = time.Now()
 
@@ -330,35 +321,6 @@ func (s *customAgentService) UpdateAgent(
 
 	logger.Infof(ctx, "Custom agent updated successfully, ID: %s", agent.ID)
 	return existingAgent, nil
-}
-
-// checkSharedAgentKBScope keeps an edit from widening a shared agent's KB
-// scope beyond what the editor could share: the share was checked when it was
-// made, and receivers see the agent's current scope.
-func (s *customAgentService) checkSharedAgentKBScope(
-	ctx context.Context, existing *types.CustomAgent, config types.CustomAgentConfig,
-) error {
-	if s.agentShareRepo == nil || s.kbService == nil {
-		return nil
-	}
-	shares, err := s.agentShareRepo.ListByAgent(ctx, existing.ID)
-	if err != nil {
-		return err
-	}
-	shared := false
-	for _, share := range shares {
-		if share != nil && share.SourceTenantID == existing.TenantID {
-			shared = true
-			break
-		}
-	}
-	if !shared {
-		return nil
-	}
-	updated := *existing
-	updated.Config = config
-	userID, _ := types.UserIDFromContext(ctx)
-	return checkAgentKBScopeShareable(ctx, s.kbService.GetKnowledgeBasesByIDsOnly, existing, &updated, userID)
 }
 
 // updateBuiltinAgent updates a built-in agent's configuration (but not basic info)
@@ -720,11 +682,6 @@ func (s *customAgentService) getSuggestedQuestions(
 		fetchLimit = 20
 	}
 
-	// Resolve each KB to the tenant whose chunks should be queried. Cross-tenant
-	// KBs reached via an organization share map to the source tenant ID; the chunk
-	// rows live under that tenant. Without this grouping a caller in tenant A
-	// querying a KB shared from tenant B would hit `tenant_id = A` and get zero
-	// rows back — the symptom is "suggested questions never appear for shared KBs".
 	scopeKBIDs := mergeUniqueStrings(queryKBIDs, resolvedTags.KnowledgeBaseIDs)
 	kbGroups := s.groupKBIDsByEffectiveTenant(ctx, scopeKBIDs)
 	// Always keep the caller's tenant in the iteration so knowledge_ids-only
@@ -883,10 +840,6 @@ type resolvedSuggestionTagScopes struct {
 	TagIDsByTenant   map[uint64][]string
 }
 
-// resolveSuggestionTagScopes keeps tag ownership separate from whole-KB
-// selection. Document tags become concrete knowledge IDs; FAQ tags remain
-// chunk tag filters. Scoped inputs also let shared-KB tags resolve against the
-// source tenant that owns the tag and chunk rows.
 func (s *customAgentService) resolveSuggestionTagScopes(
 	ctx context.Context,
 	tagScopes []types.TagScope,
@@ -1126,11 +1079,6 @@ func wikiSuggestionFromPage(page *types.WikiPage, locale string) string {
 // suggestion scope is a handful of @mentioned or retrieved documents.
 const maxSuggestionKnowledgeIDs = 50
 
-// readableSuggestionKnowledgeIDs keeps the documents the caller may read.
-// KB IDs are filtered the same way in groupKBIDsByEffectiveTenant, but
-// document IDs (from the request or a message snapshot, which records them
-// before a shared agent's scope is applied) reach a tenant's chunks directly:
-// each is resolved to its KB and checked, including a shared agent's scope.
 func (s *customAgentService) readableSuggestionKnowledgeIDs(ctx context.Context, knowledgeIDs []string) []string {
 	if len(knowledgeIDs) == 0 {
 		return knowledgeIDs
@@ -1141,14 +1089,14 @@ func (s *customAgentService) readableSuggestionKnowledgeIDs(ctx context.Context,
 	if len(knowledgeIDs) > maxSuggestionKnowledgeIDs {
 		knowledgeIDs = knowledgeIDs[:maxSuggestionKnowledgeIDs]
 	}
-	permissions := access.NewKBPermissions(ctx, s.kbShareService)
+	permissions := access.NewKBPermissions(ctx)
 	readable := make([]string, 0, len(knowledgeIDs))
 	for _, id := range knowledgeIDs {
 		knowledge, err := s.knowledgeRepo.GetKnowledgeByIDOnly(ctx, id)
 		if err != nil || knowledge == nil {
 			continue
 		}
-		ok, err := permissions.Check(knowledge.KnowledgeBaseID, knowledge.TenantID, types.OrgRoleViewer)
+		ok, err := permissions.Check(knowledge.KnowledgeBaseID, knowledge.TenantID, types.KBPermissionRead)
 		if err == nil && ok {
 			readable = append(readable, id)
 		}
@@ -1156,19 +1104,6 @@ func (s *customAgentService) readableSuggestionKnowledgeIDs(ctx context.Context,
 	return readable
 }
 
-// groupKBIDsByEffectiveTenant resolves each kbID to the tenant whose chunk
-// rows back that KB, so cross-tenant shares can be queried correctly:
-//   - In-tenant KBs map to the caller's tenant id.
-//   - KBs owned by another tenant are included only if the caller's tenant
-//     has at least Viewer access via an organization share, in which case
-//     the KB maps to its source tenant id (where the chunks actually live).
-//   - KBs the caller cannot reach (no membership, no share) are silently
-//     dropped — the suggestion endpoint never returns 403, it just shows
-//     nothing for that KB, mirroring how search results are scoped.
-//
-// The result is keyed by effective tenant id so the caller can issue one
-// chunk / wiki query per tenant group. Returns an empty (non-nil) map when
-// kbIDs is empty.
 func (s *customAgentService) groupKBIDsByEffectiveTenant(
 	ctx context.Context,
 	kbIDs []string,
@@ -1194,13 +1129,13 @@ func (s *customAgentService) groupKBIDsByEffectiveTenant(
 			kbByID[kb.ID] = kb
 		}
 	}
-	permissions := access.NewKBPermissions(ctx, s.kbShareService)
+	permissions := access.NewKBPermissions(ctx)
 	for _, kbID := range kbIDs {
 		kb := kbByID[kbID]
 		if kb == nil {
 			continue
 		}
-		ok, err := permissions.Check(kbID, kb.TenantID, types.OrgRoleViewer)
+		ok, err := permissions.Check(kbID, kb.TenantID, types.KBPermissionRead)
 		if err != nil || !ok {
 			continue
 		}

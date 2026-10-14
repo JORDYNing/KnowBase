@@ -1,0 +1,29 @@
+{
+  "server": "10.100.11.55",
+  "ssh_user": "ubuntu",
+  "directory": "/opt/knowbase",
+  "url": "http://10.100.11.55:8088",
+  "source_commit": "e9ed1671",
+  "includes_working_tree_changes": true,
+  "edition": "standard",
+  "checked_at": "2026-10-14T17:07:10.116110+08:00",
+  "images": [
+    "[knowbase/app:e9ed1671-20261014]|sha256:3f11a5126759b4ba2796111ec287703c2085fe4ec814e983b8b002c6caa10370|amd64",
+    "[knowbase/frontend:e9ed1671-20261014]|sha256:6e1379423e932777cded74986e53aa4d515f9dbe0175b10c404da2d70d4d8deb|amd64",
+    "[knowbase/docreader:amd64-20261014]|sha256:e9bcb0b808b1135618524f552defcfbeba457c24ed6312ffdfdf1ea21dfe46b2|amd64",
+    "[knowbase/postgres:amd64-20261014]|sha256:43e6e68c71679c999ba4615a4c1a417cc66e00bdceb3cca4f261bbe159c99ff3|amd64",
+    "[knowbase/redis:amd64-20261014]|sha256:730af8f16fa1c51472e6dea285c41cde7c71dc2e559bdad4f5706e3845f14c80|amd64"
+  ],
+  "checks": {
+    "five_services_healthy": true,
+    "schema_version": 115,
+    "schema_dirty": false,
+    "website_and_assets_http": 200,
+    "invalid_login_http": 401,
+    "redis_persistence_after_recreation": true,
+    "app_restart": true,
+    "docker_enabled_at_boot": true
+  },
+  "feishu_callback_url": "http://10.100.11.55:8088/api/v1/auth/feishu/callback",
+  "database_initialization": "new_instance"
+}

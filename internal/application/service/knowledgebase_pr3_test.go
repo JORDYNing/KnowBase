@@ -504,7 +504,6 @@ func TestDuplicateKnowledgeBase_CreatesSettingsOnlyDuplicate(t *testing.T) {
 		ChunkCount:      27,
 		IsProcessing:    true,
 		ProcessingCount: 2,
-		ShareCount:      3,
 		CreatorName:     "Source Owner",
 	}
 	repo.rows["src"] = source
@@ -542,7 +541,6 @@ func TestDuplicateKnowledgeBase_CreatesSettingsOnlyDuplicate(t *testing.T) {
 	assert.Zero(t, target.ChunkCount)
 	assert.False(t, target.IsProcessing)
 	assert.Zero(t, target.ProcessingCount)
-	assert.Zero(t, target.ShareCount)
 	assert.Empty(t, target.CreatorName)
 	require.Same(t, target, repo.rows[target.ID])
 }

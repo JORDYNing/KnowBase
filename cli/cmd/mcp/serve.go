@@ -7,7 +7,7 @@ import (
 	mcpserver "github.com/Tencent/WeKnora/cli/internal/mcp"
 )
 
-// NewCmdServe builds `weknora mcp serve`. Currently stdio-only; HTTP
+// NewCmdServe builds `gamelib mcp serve`. Currently stdio-only; HTTP
 // (streamable / SSE) transports may be added later.
 func NewCmdServe(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
@@ -27,8 +27,8 @@ under "mcpServers":
 
     {
       "mcpServers": {
-        "weknora": {
-          "command": "weknora",
+        "gamelib": {
+          "command": "gamelib",
           "args": ["mcp", "serve"]
         }
       }
@@ -47,13 +47,13 @@ Consult your MCP client's documentation for the exact config-file location.`,
 		},
 	}
 	cmdutil.SetAgentHelp(cmd, cmdutil.AgentHelp{
-		UsedFor: "run weknora as a long-lived MCP (Model Context Protocol) server over stdio for an IDE/host agent",
+		UsedFor: "run gamelib as a long-lived MCP (Model Context Protocol) server over stdio for an IDE/host agent",
 		Output:  "no stdout payload (JSON-RPC 2.0 protocol traffic); logs go to stderr",
 		Examples: []string{
-			"weknora mcp serve",
+			"gamelib mcp serve",
 		},
 		Warnings: []string{
-			"this is a long-running stdio server, not a one-shot command — register it in your MCP client (command: weknora, args: [mcp, serve])",
+			"this is a long-running stdio server, not a one-shot command — register it in your MCP client (command: gamelib, args: [mcp, serve])",
 			"exits with auth.unauthenticated at startup if no profile is configured",
 		},
 	})

@@ -1,7 +1,7 @@
 // Package config reads and writes the user-level config at
-// $XDG_CONFIG_HOME/weknora/config.yaml. yaml.v3 directly; viper is
+// $XDG_CONFIG_HOME/gamelib/config.yaml. yaml.v3 directly; viper is
 // intentionally not used. Multi-host profile map lives here;
-// the per-project link (.weknora/project.yaml) is handled by the
+// the per-project link (.gamelib/project.yaml) is handled by the
 // projectlink package.
 package config
 

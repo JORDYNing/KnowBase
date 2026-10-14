@@ -292,11 +292,11 @@ func TestEdit_SystemPromptFile(t *testing.T) {
 	assert.Equal(t, "new prompt", svc.updateReq.Config.SystemPrompt)
 }
 
-// withRootHarnessAgent wraps `weknora agent update ...` under a synthetic root
+// withRootHarnessAgent wraps `gamelib agent update ...` under a synthetic root
 // cmd that registers the global persistent flags (mirrors addGlobalFlags in
 // cmd/root.go).
 func withRootHarnessAgent(edit *cobra.Command, args ...string) *cobra.Command {
-	root := &cobra.Command{Use: "weknora"}
+	root := &cobra.Command{Use: "gamelib"}
 	pf := root.PersistentFlags()
 	pf.BoolP("yes", "y", false, "")
 	pf.String("format", "", "Output format: text | json | ndjson")
@@ -352,7 +352,7 @@ func TestAgentEdit_RetryArgvPreservesAddKB(t *testing.T) {
 	assert.Equal(t, cmdutil.CodeInputConfirmationRequired, ce.Code)
 	// pflag Visit is lexicographical among changed flags.
 	assert.Equal(t, []string{
-		"weknora", "agent", "update", "ag_abc",
+		"gamelib", "agent", "update", "ag_abc",
 		"--add-kb", "kb_new",
 		"--format", "json",
 		"--remove-kb", "kb_old",

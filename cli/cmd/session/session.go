@@ -1,4 +1,4 @@
-// Package sessioncmd holds `weknora session` command tree (list / view /
+// Package sessioncmd holds `gamelib session` command tree (list / view /
 // delete / ask / resume / stop) for chat history and agent invocation.
 //
 // Package name `sessioncmd` (not `session`) so callers can `import sdk
@@ -12,7 +12,7 @@ import (
 	"github.com/Tencent/WeKnora/cli/internal/cmdutil"
 )
 
-// NewCmd builds the `weknora session` parent command.
+// NewCmd builds the `gamelib session` parent command.
 func NewCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "session",

@@ -26,9 +26,9 @@ import (
 // files.go hosts every file-proxy surface the router exposes:
 //
 //   - /files                              tenant-scoped raw storage proxy
-//   - /api/v1/knowledge-bases/:id/files   KB-scoped proxy (shared-KB images)
+//   - /api/v1/knowledge-bases/:id/files   KB-scoped proxy (bound KB files)
 //   - /api/v1/sessions/:id/messages/:message_id/files
-//                                          message-scoped proxy (shared-agent output)
+//                                          message-scoped proxy (persisted message output)
 //   - /api/v1/files/presigned             HMAC-signed anonymous access (IM)
 //   - /api/v1/files/presigned-preview     Admin-only URL diagnostics
 //   - /r/:token                           short-lived capability URLs
@@ -45,9 +45,7 @@ type getRouteRegistrar interface {
 }
 
 type (
-	messageFileLookup        = access.MessageFileLookup
-	sharedAgentFileLookup    = access.SharedAgentFileLookup
-	messageKBShareAuthorizer = access.MessageKBShareAuthorizer
+	messageFileLookup = access.MessageFileLookup
 )
 
 // localStorageBaseDir resolves LOCAL_STORAGE_BASE_DIR with the container
@@ -382,25 +380,14 @@ func newKBScopedFileServeHandlerWithResources(
 	}
 }
 
-// newMessageScopedFileServeHandler serves resources rendered inside one
-// assistant message. The message service first proves that the caller owns the
-// containing session, and the persisted message must reference the exact file.
-// For cross-workspace resources we then require either the
-// message's agent to still be shared from the resource-owning workspace, or —
-// when the reply was produced by the caller's own agent over an org-shared
-// knowledge base — that the resource's KB is still shared to the caller.
-//
-// The owner tenant comes from the resource registry whenever possible. This
-// also keeps old messages (written before agent_tenant_id was populated)
-// readable without accepting a client-provided source workspace ID.
+// newMessageScopedFileServeHandler serves an exact persisted message output.
+// Session ownership is checked before the resource must match the caller tenant.
 func newMessageScopedFileServeHandler(
 	messageService messageFileLookup,
-	agentShareService sharedAgentFileLookup,
 	tenantService interfaces.TenantService,
 	globalFileService interfaces.FileService,
 	storageResolver interfaces.StorageBackendResolver,
 	resourceCatalog interfaces.ResourceCatalog,
-	kbShareAuth messageKBShareAuthorizer,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		reference, ok := requireFilePathQuery(c)
@@ -408,7 +395,7 @@ func newMessageScopedFileServeHandler(
 			return
 		}
 		file, err := access.ResolveMessageFile(c.Request.Context(), c.Param("id"), c.Param("message_id"), reference,
-			messageService, agentShareService, resourceCatalog, kbShareAuth)
+			messageService, resourceCatalog)
 		if fileAccessError(c, err) {
 			return
 		}
@@ -486,14 +473,10 @@ func serveMessageScopedFiles(
 	r *gin.RouterGroup,
 	g *rbacGuards,
 	messageService interfaces.MessageService,
-	agentShareService interfaces.AgentShareService,
 	tenantService interfaces.TenantService,
 	globalFileService interfaces.FileService,
 	storageResolver interfaces.StorageBackendResolver,
 	resourceCatalog interfaces.ResourceCatalog,
-	kbShareService interfaces.KBShareService,
-	kbService interfaces.KnowledgeBaseService,
-	knowledgeService interfaces.KnowledgeService,
 ) {
 	g.apiKeyRoute(
 		r,
@@ -503,16 +486,10 @@ func serveMessageScopedFiles(
 		g.Viewer(),
 		newMessageScopedFileServeHandler(
 			messageService,
-			agentShareService,
 			tenantService,
 			globalFileService,
 			storageResolver,
 			resourceCatalog,
-			messageKBShareAuthorizer{
-				ShareGuard: kbShareService,
-				KBs:        kbService,
-				Knowledges: knowledgeService,
-			},
 		),
 	)
 }

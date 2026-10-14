@@ -5,7 +5,6 @@ import { listAgents, type CustomAgent } from '@/api/agent'
 import { listModels, type ModelConfig } from '@/api/model'
 import { listWebSearchProviders, type WebSearchProviderEntity } from '@/api/web-search-provider'
 import { isNamedSandboxBackend, listSandboxConfigs, type SandboxConfigRecord } from '@/api/system'
-import { useOrganizationStore } from '@/stores/organization'
 import { getCurrentLanguage } from '@/utils/request'
 import { isLocalizedSnapshotUsable, shouldForceLocalizedRefetch } from './localizedResourceCache'
 import { createCachedResource, createKeyedSnapshotCache } from './resourceCache'
@@ -129,10 +128,9 @@ export const useChatResourcesStore = defineStore('chatResources', () => {
   // 智能体可见知识库、单个知识库详情：拿到过就一直用，直到显式失效。
   // @ 提及列表会逐条补 count，这类按 key 的读取不能每次都打接口。
   const agentKbCache = createKeyedSnapshotCache(async (cacheKey: string) => {
-    const [agentId, sourceTenantId] = cacheKey.split(':')
+    const agentId = cacheKey
     const res: any = await listKnowledgeBases({
       agent_id: agentId,
-      agent_source_tenant_id: sourceTenantId === 'current' ? undefined : sourceTenantId,
     })
     return res?.data && Array.isArray(res.data) ? (res.data as any[]) : []
   })
@@ -172,17 +170,8 @@ export const useChatResourcesStore = defineStore('chatResources', () => {
     return rawKnowledgeBases.value
   }
 
-  // 共享资源是附带刷新：它的接口挂了不能连坐自己的列表，否则调用方的 catch
-  // 会把已经拿到的自己的知识库 / 智能体一起清掉（手动文档编辑器、API 集成页）。
-  // 共享列表失败时保留上一次快照，由页面自己决定要不要单独强刷。
-  const swallow = (p: Promise<unknown>) => p.catch(() => undefined)
-
   async function ensureKnowledgeBases(force = false): Promise<void> {
-    const orgStore = useOrganizationStore()
-    await Promise.all([
-      knowledgeBasesResource.ensure(force),
-      swallow(orgStore.fetchSharedKnowledgeBases({ force })),
-    ])
+    await knowledgeBasesResource.ensure(force)
   }
 
   /**
@@ -193,16 +182,11 @@ export const useChatResourcesStore = defineStore('chatResources', () => {
     force = false,
   ): Promise<{ data: CustomAgent[]; disabled_own_agent_ids: string[] }> {
     const creator = params?.creator ?? 'all'
-    const orgStore = useOrganizationStore()
 
-    // 带 creator 过滤的列表不进快照，但仍需刷新共享智能体（与全量路径保持一致）。
+    // 带 creator 过滤的列表不进全量快照。
     if (creator !== 'all') {
       if (force) void ensureAgents(true).catch(() => {})
-      const [agentsRes] = await Promise.all([
-        listAgents({ creator }),
-        orgStore.fetchSharedAgents({ force }),
-      ])
-      const res = agentsRes as { data?: CustomAgent[]; disabled_own_agent_ids?: string[] }
+      const res = await listAgents({ creator }) as { data?: CustomAgent[]; disabled_own_agent_ids?: string[] }
       return { data: res.data || [], disabled_own_agent_ids: res.disabled_own_agent_ids || [] }
     }
 
@@ -211,16 +195,12 @@ export const useChatResourcesStore = defineStore('chatResources', () => {
   }
 
   async function ensureAgents(force = false): Promise<void> {
-    const orgStore = useOrganizationStore()
     const locale = getCurrentLanguage()
     // 飞行中的请求是用另一种语言发起的：不能复用它，排在它后面再发一次。
     const mustForce =
       force ||
       shouldForceLocalizedRefetch(agentsResource.hasInFlightRequest(), agentsInflightLocale, locale)
-    await Promise.all([
-      agentsResource.ensure(mustForce),
-      swallow(orgStore.fetchSharedAgents({ force })),
-    ])
+    await agentsResource.ensure(mustForce)
   }
 
   async function ensureModels(force = false): Promise<void> {
@@ -252,18 +232,16 @@ export const useChatResourcesStore = defineStore('chatResources', () => {
 
   /** 并行预取对话输入栏及列表页常用的空间级资源 */
   async function prefetchChatInput(force = false): Promise<void> {
-    const orgStore = useOrganizationStore()
     await Promise.all([
       ensureKnowledgeBases(force),
       ensureAgents(force),
       ensureModels(force),
       ensureWebSearchProviders(force),
-      orgStore.fetchOrganizations({ force }),
     ])
   }
 
-  async function ensureAgentKnowledgeBases(agentId: string, sourceTenantId?: string, force = false): Promise<any[]> {
-    return agentKbCache.ensure(`${agentId}:${sourceTenantId || 'current'}`, force)
+  async function ensureAgentKnowledgeBases(agentId: string, force = false): Promise<any[]> {
+    return agentKbCache.ensure(agentId, force)
   }
 
   /** 单个知识库详情（侧栏 + 详情页共用，去重并发请求） */

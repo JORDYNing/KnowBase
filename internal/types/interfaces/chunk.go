@@ -28,7 +28,6 @@ type ChunkRepository interface {
 	GetChunkBySeqID(ctx context.Context, tenantID uint64, seqID int64) (*types.Chunk, error)
 	// ListChunksByID lists chunks by ids
 	ListChunksByID(ctx context.Context, tenantID uint64, ids []string) ([]*types.Chunk, error)
-	// ListChunksByIDOnly lists chunks by ids without tenant filter (for shared KB resolution).
 	ListChunksByIDOnly(ctx context.Context, ids []string) ([]*types.Chunk, error)
 	// ListChunksBySeqID lists chunks by seq_ids
 	ListChunksBySeqID(ctx context.Context, tenantID uint64, seqIDs []int64) ([]*types.Chunk, error)
@@ -80,8 +79,6 @@ type ChunkRepository interface {
 	) ([]*types.Chunk, error)
 	// ListChunksByParentIDs lists chunks whose parent_chunk_id is in the given list
 	ListChunksByParentIDs(ctx context.Context, tenantID uint64, parentIDs []string) ([]*types.Chunk, error)
-	// ListChunksByParentIDsOnly lists chunks by parent IDs without tenant filter
-	// (for shared KB resolution).
 	ListChunksByParentIDsOnly(ctx context.Context, parentIDs []string) ([]*types.Chunk, error)
 	// UpdateChunk updates a chunk
 	UpdateChunk(ctx context.Context, chunk *types.Chunk) error

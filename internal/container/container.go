@@ -161,6 +161,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewTenantAPIKeyRepository))
 	must(container.Provide(repository.NewTenantMemberRepository))
 	must(container.Provide(repository.NewTenantInvitationRepository))
+	must(container.Provide(repository.NewTenantJoinRequestRepository))
 	must(container.Provide(repository.NewAuditLogRepository))
 	must(container.Provide(repository.NewKnowledgeBaseRepository))
 	must(container.Provide(repository.NewKnowledgeRepository))
@@ -182,12 +183,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewTenantSandboxConfigRepository))
 	must(container.Provide(repository.NewTenantSkillRepository))
 	must(container.Provide(repository.NewCustomAgentRepository))
-	must(container.Provide(repository.NewOrganizationRepository))
-	must(container.Provide(repository.NewKBShareRepository))
-	must(container.Provide(repository.NewAgentShareRepository))
 	must(container.Provide(repository.NewEmbedChannelRepository))
 	must(container.Provide(repository.NewMCPEndpointRepository))
-	must(container.Provide(repository.NewTenantDisabledSharedAgentRepository))
 	must(container.Provide(repository.NewUserResourceFavoriteRepository))
 	must(container.Provide(service.NewWebSearchStateService))
 	must(container.Provide(repository.NewDataSourceRepository))
@@ -233,12 +230,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewTenantAPIKeyService))
 	must(container.Provide(service.NewTenantMemberService))
 	must(container.Provide(service.NewTenantInvitationService))
+	must(container.Provide(service.NewTenantJoinRequestService))
 	must(container.Provide(service.NewAuditLogService))
 	must(container.Provide(service.NewAuditLogRetentionRunner))
 	must(container.Provide(service.NewKnowledgeBaseService))
-	must(container.Provide(service.NewOrganizationService))
-	must(container.Provide(service.NewKBShareService)) // KBShareService must be registered before KnowledgeService and KnowledgeTagService
-	must(container.Provide(service.NewAgentShareService))
 	must(container.Provide(service.NewKnowledgeService))
 	must(container.Provide(service.NewSpanTracker))
 	must(container.Provide(service.NewChunkService))
@@ -428,7 +423,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	// SandboxTerminalService opens interactive PTYs on session sandboxes for
 	// the frontend terminal panel. First-use provisioning takes a sandbox
-	// config ID already resolved by the WebSocket handler (own or shared agent).
+	// current-tenant config ID already resolved by the WebSocket handler.
 	must(container.Provide(service.NewSandboxTerminalService))
 	// One-shot desktop handshake tickets. Falls back to an in-process store
 	// when Redis is absent (Lite mode), same as the binding store.
@@ -532,6 +527,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewTenantHandler))
 	must(container.Provide(handler.NewTenantMemberHandler))
 	must(container.Provide(handler.NewTenantInvitationHandler))
+	must(container.Provide(handler.NewTenantJoinRequestHandler))
 	must(container.Provide(handler.NewAuditLogHandler))
 	must(container.Provide(handler.NewKnowledgeBaseHandler))
 	must(container.Provide(handler.NewKnowledgeHandler))
@@ -553,16 +549,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewInitializationHandler))
 	must(container.Provide(handler.NewAuthHandler))
 	must(container.Provide(handler.NewSystemHandler))
-	// Dig resolves exact types; adapt the registered service to the handler's
-	// narrower SharedAgentLookup interface at the composition boundary.
+	// Adapt handler dependencies at the composition boundary.
 	must(container.Provide(func(
 		mcpService interfaces.MCPServiceService,
 		toolApprovals interfaces.MCPToolApprovalService,
 		gate *approval.Gate,
 		models interfaces.ModelService,
-		agents interfaces.AgentShareService,
 	) *handler.MCPServiceHandler {
-		return handler.NewMCPServiceHandler(mcpService, toolApprovals, gate, models, agents)
+		return handler.NewMCPServiceHandler(mcpService, toolApprovals, gate, models)
 	}))
 	must(container.Provide(handler.NewMCPCredentialsHandler))
 	must(container.Provide(handler.NewMCPOAuthHandler))
@@ -576,11 +570,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewCustomAgentHandler))
 	must(container.Provide(handler.NewUserResourceFavoriteHandler))
 	must(container.Provide(func(
-		s *service.TenantSkillService, agents interfaces.AgentShareService,
+		s *service.TenantSkillService,
 	) *handler.SkillHandler {
-		return handler.NewSkillHandler(s, s, agents)
+		return handler.NewSkillHandler(s, s)
 	}))
-	must(container.Provide(handler.NewOrganizationHandler))
 	must(container.Provide(handler.NewMemoryHandler))
 
 	// Data source handler
@@ -632,8 +625,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 // hook. Stored local:// URLs are relative to the resolved storage base dir and
 // do NOT encode the owning tenant's configured PathPrefix, so resolving them to
 // disk bytes requires rebuilding the FileService from that tenant's storage
-// config. The owning tenant is parsed from the URL's first path segment, which
-// correctly handles cross-tenant shared resources (e.g. shared KB images).
+// config. The owning tenant is parsed from the URL's first path segment;
+// this storage adapter resolves bytes only, after resource admission upstream.
 func registerChatLocalImageResolver(
 	tenantRepo interfaces.TenantRepository,
 	storageResolver interfaces.StorageBackendResolver,

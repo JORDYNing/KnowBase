@@ -63,7 +63,7 @@ docker compose ps                 # 等所有服务变成 healthy/running
 
 停止用 `docker compose down`（加 `-v` 会连数据卷一起删，慎用）。仓库里的 `make start-all` 是同一条命令的封装（`scripts/start_all.sh`，额外做 Ollama 检查、`.env` 兜底、沙箱镜像预拉取），两者选一即可。
 
-启动后在浏览器打开 `http://localhost` 就是前端（端口由 `FRONTEND_PORT` 决定，默认 80），首次访问会落到注册页。前端 Nginx 把 `/api/` 反代到后端，所以接口调用同样走 `http://localhost/api/v1`；后端 `8080` 端口也直接映射到宿主机，`curl http://localhost:8080/health` 可用于确认后端就绪。
+启动后在浏览器打开 `http://localhost` 就是前端（端口由 `FRONTEND_PORT` 决定，默认 80），首次访问会进入飞书登录页，获批加入 10000 后才能访问空间资源。前端 Nginx 把 `/api/` 反代到后端，所以接口调用同样走 `http://localhost/api/v1`；后端 `8080` 端口也直接映射到宿主机，`curl http://localhost:8080/health` 可用于确认后端就绪。
 
 > 注意：`docker-compose.yml` 的 app 服务使用 `env_file: [.env]`，`.env` 不存在会导致 compose 解析失败。`make docker-run` / `start_all.sh` 会自动 `cp .env.example .env` 或 `touch .env` 兜底。
 
@@ -104,12 +104,11 @@ docker compose up -d
 | `milvus` | `milvus` | 19530 / 9091 | 向量库（standalone，内嵌 etcd） |
 | `weaviate` | `weaviate` | 9035（HTTP）/ 50052（gRPC） | 向量库 |
 | `doris` | `doris-fe` + `doris-be` | 8030（FE HTTP）/ 9030（FE MySQL）/ 8040（BE） | Apache Doris 4.1 检索引擎（需 >= 3.0，HNSW ANN） |
-| `dex`（含 `full`） | `dex` | 5556 | OIDC 测试用 IdP（配置在 `misc/dex-config.yaml`） |
 | `langfuse`（含 `full`） | `langfuse-db-init`、`langfuse-clickhouse`、`langfuse-minio`、`langfuse-worker`、`langfuse-web` | 3000（UI）/ 9100/9101（专用 MinIO） | 自建 Langfuse 可观测栈，复用 Gamelib 的 postgres（新建 `langfuse` 库）与 redis（DB 1） |
 | `odl-hybrid` | `odl-hybrid` | expose 5002 | OpenDataLoader/Docling PDF 混合解析后端（仅本地构建，配 `DOCREADER_ODL_HYBRID` 使用） |
 | `full` | `sandbox`、`mcp` 及上述带 full 标记的服务 | mcp: `${MCP_PORT:-8082}:8000` | `sandbox` 仅用于 build/pull 镜像（`command: ["true"]`，非常驻）。Docker 沙箱默认关闭，需设 `WEKNORA_SANDBOX_DOCKER_ENABLED=true` 并挂载 `docker.sock`（等同宿主机 root）；Cube/E2B 不依赖本机 daemon。`mcp` 为 MCP Server |
 
-app 容器的 `environment` 段落是全量环境变量清单（数据库、向量库、对象存储、Docreader 调优、租户策略、OIDC 等），详见 [04-configuration.md](./04-configuration.md)。
+app 容器的 `environment` 段落是全量环境变量清单（数据库、向量库、对象存储、Docreader 调优、飞书认证等），详见 [04-configuration.md](./04-configuration.md)。
 
 ## 二、开发模式（docker-compose.dev.yml + scripts/dev.sh）
 
@@ -231,7 +230,7 @@ helm install weknora ./helm -n weknora --create-namespace \
 
 ## 七、桌面端（Lite 模式 / 桌面应用）
 
-桌面端面向本机与低资源环境，底层都是同一套 Lite 运行时（单进程 + SQLite + 内存队列），只是分发与启动方式不同：**单二进制**（命令行启动，也可作为后台服务）、**桌面应用**（图形界面，双击启动）。知识库与问答能力一致；免注册登录、本机沙箱与绑定本机项目目录只在桌面应用中提供。
+桌面端面向本机与低资源环境，底层都是同一套 Lite 运行时（单进程 + SQLite + 内存队列），只是分发与启动方式不同：**单二进制**（命令行启动，也可作为后台服务）、**桌面应用**（图形界面，双击启动）。知识库与问答能力一致；本机沙箱与绑定本机项目目录只在桌面应用中提供。所有形态均采用飞书登录和团队审批。
 
 ### Lite 运行时（零外部依赖） {#_7-1-lite-运行时-零外部依赖}
 
@@ -250,7 +249,7 @@ make run-lite                       # 构建并以 .env.lite 环境启动 ./Game
 make package-lite                   # 打包发行 tarball（scripts/package-lite.sh）
 ```
 
-单二进制通过浏览器访问时，与标准版一样需要注册和登录。桌面应用启动时通过原生桥接取得每进程随机凭据，调用 `POST /auth/auto-setup` 自动创建本地账号并登录；该接口不接受匿名 HTTP 请求。
+单二进制、标准 Web 与桌面应用均需要飞书认证，新账号自动申请加入空间 10000。桌面 `auto-setup` 已关闭，不再自动创建本地账号或个人空间。部署前须配置飞书应用并准备有效的目标空间，见[团队空间与飞书认证](../03-features/01-tenant-auth.md)。
 
 ### 桌面应用（cmd/desktop，Wails v2） {#_7-2-桌面应用-cmd-desktop-wails-v2}
 

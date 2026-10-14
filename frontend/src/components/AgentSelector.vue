@@ -53,31 +53,9 @@
             </div>
           </div>
 
-          <!-- 共享给我 -->
-          <div v-if="sharedAgentsList.length > 0" class="agent-group">
-            <div class="agent-group-title">{{ $t('agent.tabs.sharedToMe') }}</div>
-            <div v-for="shared in sharedAgentsList" :key="`${shared.agent.id}-${shared.source_tenant_id}`"
-              class="agent-option" :class="{ selected: isSharedAgentSelected(shared) }"
-              @mouseenter="onSharedOptionEnter(shared, $event)" @mouseleave="onOptionLeave"
-              @click="selectSharedAgent(shared)">
-              <AgentAvatar :name="shared.agent.name" size="small" />
-              <span class="agent-option-name">{{ shared.agent.name }}</span>
-              <span class="shared-tag">{{ $t('agent.selector.sharedLabel') }}</span>
-              <div v-if="getAgentNotReadyLabels(shared.agent, String(shared.source_tenant_id)).length"
-                class="agent-option-actions">
-                <t-tooltip
-                  :content="$t('agent.selector.notReadyHint', { items: formatNotReadyHint(shared.agent, String(shared.source_tenant_id)) })"
-                  placement="top">
-                  <TIcon name="error-circle" size="14px" class="not-ready-icon" @click.stop />
-                </t-tooltip>
-              </div>
-            </div>
-          </div>
 
-          <div v-if="builtinAgents.length === 0 && customAgents.length === 0 && sharedAgentsList.length === 0"
-            class="agent-option empty">
-            {{ $t('agent.noAgents') }}
-          </div>
+
+
         </div>
       </div>
     </div>
@@ -103,12 +81,10 @@
               <div class="detail-title-row">
                 <span class="detail-name">{{ activeDetail.agent.name }}</span>
                 <button v-if="canShowDetailHeaderAction" type="button" class="detail-header-action"
-                  :class="{ 'detail-header-action--warn': activeDetailNotReadyLabels.length }" :title="activeDetailNotReadyLabels.length
-                    ? $t('agent.selector.configureAction')
-                    : $t('agent.selector.goToSettings')"
-                  @click="goToSettings(activeDetail.agent, activeDetail.sourceTenantId)">
-                  <TIcon :name="activeDetailNotReadyLabels.length ? 'jump' : 'setting'" size="14px" />
-                </button>
+                  :class="{ 'detail-header-action--warn': activeDetailNotReadyLabels.length }"
+                  :title="activeDetailNotReadyLabels.length ? $t('agent.selector.configureAction') : $t('agent.selector.goToSettings')"
+                  @click="goToSettings(activeDetail.agent)"><TIcon :name="activeDetailNotReadyLabels.length ? 'jump' : 'setting'" size="14px" /></button>
+
               </div>
               <span v-if="isDetailCurrent" class="detail-current">{{ $t('agent.selector.current') }}</span>
               <div v-else-if="activeDetailNotReadyLabels.length" class="detail-not-ready">
@@ -116,8 +92,7 @@
                 <span class="detail-not-ready-label">{{ $t('agent.selector.notReadyStatus') }}</span>
                 <span v-for="item in activeDetailNotReadyLabels" :key="item" class="detail-not-ready-item">{{ item
                   }}</span>
-                <span v-if="activeDetail.sourceTenantId && activeDetailNotReadyLabels.length"
-                  class="detail-not-ready-shared-hint">{{ $t('agent.selector.sharedNotReadyContact') }}</span>
+
               </div>
             </div>
           </div>
@@ -162,17 +137,7 @@
             </div>
           </div>
 
-          <div v-if="activeDetail.sharedMeta?.org_name || activeDetail.sharedMeta?.shared_by_username"
-            class="detail-meta">
-            <div v-if="activeDetail.sharedMeta.org_name" class="detail-meta-row">
-              <img src="@/assets/img/organization-green.svg" class="detail-meta-icon" alt="" aria-hidden="true" />
-              <span>{{ activeDetail.sharedMeta.org_name }}</span>
-            </div>
-            <div v-if="activeDetail.sharedMeta.shared_by_username" class="detail-meta-row">
-              <img src="@/assets/img/user.svg" class="detail-meta-icon" alt="" aria-hidden="true" />
-              <span>{{ activeDetail.sharedMeta.shared_by_username }}</span>
-            </div>
-          </div>
+
         </div>
       </div>
     </div>
@@ -186,16 +151,13 @@ import { useRouter } from 'vue-router';
 import { Icon as TIcon, Tooltip as TTooltip } from 'tdesign-vue-next';
 import { type CustomAgent, BUILTIN_QUICK_ANSWER_ID, BUILTIN_SMART_REASONING_ID } from '@/api/agent';
 import AgentAvatar from '@/components/AgentAvatar.vue';
-import { useOrganizationStore } from '@/stores/organization';
 import { useSettingsStore } from '@/stores/settings';
-import type { SharedAgentInfo } from '@/api/organization';
 import { getRootZoom, rectToCssPx, cssViewportSize } from '@/utils/zoom';
 import { type ModelConfig } from '@/api/model';
 import {
   getAgentNotReadyReasonKeys,
   resolveAgentNotReadySection,
   resolveAgentNotReadyHighlight,
-  canLocallyConfigureAgent,
   type AgentNotReadyReasonKey,
 } from '@/utils/agent-readiness';
 import { formatLocalizedList } from '@/utils/format-list';
@@ -207,7 +169,6 @@ import {
 
 const { t, locale } = useI18n();
 const router = useRouter();
-const orgStore = useOrganizationStore();
 const settingsStore = useSettingsStore();
 const chatResources = useChatResourcesStore();
 
@@ -221,19 +182,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void;
-  (e: 'select', agent: CustomAgent, sourceTenantId?: string): void;
-  (e: 'not-ready', agent: CustomAgent, labels: string[], keys: AgentNotReadyReasonKey[], sourceTenantId?: string): void;
+  (e: 'select', agent: CustomAgent): void;
+  (e: 'not-ready', agent: CustomAgent, labels: string[], keys: AgentNotReadyReasonKey[]): void;
 }>();
+type AgentDetailTarget = { agent: CustomAgent }
 
-type AgentDetailTarget = {
-  agent: CustomAgent;
-  sourceTenantId?: string;
-  sharedMeta?: { org_name?: string; shared_by_username?: string; web_search_ready?: boolean };
-};
-
-type SharedAgentSelection = Omit<SharedAgentInfo, 'agent'> & {
-  agent: CustomAgent;
-};
 
 const dropdownStyle = ref<Record<string, string>>({});
 const activeDetail = ref<AgentDetailTarget | null>(null);
@@ -263,49 +216,14 @@ const builtinAgents = computed(() => {
 });
 
 const customAgents = computed(() => agentsList.value.filter(a => !a.is_builtin));
+const isMyAgentSelected = (agent: CustomAgent) => props.currentAgentId === agent.id
 
-const toCustomAgent = (agent: SharedAgentInfo['agent']): CustomAgent => ({
-  is_builtin: false,
-  config: {},
-  ...agent,
-});
+const isDetailCurrent = computed(() => !!activeDetail.value && isMyAgentSelected(activeDetail.value.agent))
 
-const sharedAgentsList = computed<SharedAgentSelection[]>(() =>
-  (orgStore.sharedAgents || [])
-    .filter(shared => !shared.disabled_by_me)
-    .map(shared => ({ ...shared, agent: toCustomAgent(shared.agent) })),
-);
+const activeDetailNotReadyLabels = computed(() => activeDetail.value ? getAgentNotReadyLabels(activeDetail.value.agent) : [])
 
-const currentAgentSourceTenantId = computed(() => settingsStore.selectedAgentSourceTenantId ?? null);
+const canShowDetailHeaderAction = computed(() => !!activeDetail.value)
 
-const isSharedAgentSelected = (shared: SharedAgentSelection) =>
-  props.currentAgentId === shared.agent.id && currentAgentSourceTenantId.value === String(shared.source_tenant_id);
-
-const isMyAgentSelected = (agent: CustomAgent) =>
-  props.currentAgentId === agent.id && !currentAgentSourceTenantId.value;
-
-const isDetailCurrent = computed(() => {
-  const detail = activeDetail.value;
-  if (!detail) return false;
-  if (detail.sourceTenantId) {
-    return props.currentAgentId === detail.agent.id
-      && currentAgentSourceTenantId.value === detail.sourceTenantId;
-  }
-  return isMyAgentSelected(detail.agent);
-});
-
-const activeDetailNotReadyLabels = computed(() => {
-  const detail = activeDetail.value;
-  if (!detail) return [];
-  return getAgentNotReadyLabels(detail.agent, detail.sourceTenantId);
-});
-
-const canShowDetailHeaderAction = computed(() => {
-  const detail = activeDetail.value;
-  if (!detail) return false;
-  if (canLocallyConfigureAgent(detail.sourceTenantId)) return true;
-  return activeDetailNotReadyLabels.value.length === 0;
-});
 
 const getKbCapability = (agent: CustomAgent): string => {
   const config = agent.config || {};
@@ -320,14 +238,8 @@ const getKbCapability = (agent: CustomAgent): string => {
 const isWebSearchEnabledForAgent = (agent: CustomAgent): boolean => {
   return isAgentWebSearchEnabled(agent.config);
 };
+const isWebSearchReadyForAgent = (agent: CustomAgent): boolean => isAgentWebSearchReady(agent.config, webSearchProviders.value)
 
-const isWebSearchReadyForAgent = (agent: CustomAgent): boolean => {
-  return isAgentWebSearchReady(
-    agent.config,
-    webSearchProviders.value,
-    activeDetail.value?.sourceTenantId ? activeDetail.value.sharedMeta?.web_search_ready : undefined,
-  );
-};
 
 const isImageUploadEnabledForAgent = (agent: CustomAgent): boolean => {
   const config = agent.config || {};
@@ -363,9 +275,9 @@ const getMcpCapability = (agent: CustomAgent): string => {
   if (config.mcp_selection_mode === 'none' || (!config.mcp_services?.length && config.mcp_selection_mode !== 'all')) {
     return '';
   }
-  if (config.mcp_selection_mode === 'all') return t('agent.shareScope.mcpAll');
+  if (config.mcp_selection_mode === 'all') return t('agent.capabilities.mcpAll');
   if (config.mcp_services?.length) {
-    return t('agent.shareScope.mcpSelected', { count: config.mcp_services.length });
+    return t('agent.capabilities.mcpSelected', { count: config.mcp_services.length });
   }
   return t('agent.capabilities.mcpEnabled');
 };
@@ -386,32 +298,14 @@ const formatAgentNotReadyReasons = (
     return t('input.agentMissingAllowedTools');
   });
 };
+const getAgentNotReadyReasonKeysFor = (agent: CustomAgent) => getAgentNotReadyReasonKeys(agent.config, modelsList.value, { isAgentMode: agent.config?.agent_mode === 'smart-reasoning' })
 
-const getAgentNotReadyReasonKeysFor = (agent: CustomAgent, sourceTenantId?: string) => {
-  const isAgentMode = agent.config?.agent_mode === 'smart-reasoning';
-  const isSharedAgent = !!sourceTenantId;
-  return getAgentNotReadyReasonKeys(agent.config, modelsList.value, {
-    isAgentMode,
-    isSharedAgent,
-  });
-};
+const getAgentNotReadyLabels = (agent: CustomAgent): string[] => formatAgentNotReadyReasons(getAgentNotReadyReasonKeysFor(agent), agent.is_builtin)
 
-const getAgentNotReadyLabels = (agent: CustomAgent, sourceTenantId?: string): string[] => {
-  return formatAgentNotReadyReasons(
-    getAgentNotReadyReasonKeysFor(agent, sourceTenantId),
-    agent.is_builtin,
-  );
-};
+const formatNotReadyHint = (agent: CustomAgent): string => formatLocalizedList(getAgentNotReadyLabels(agent), locale.value)
 
-const formatNotReadyHint = (agent: CustomAgent, sourceTenantId?: string): string => {
-  return formatLocalizedList(getAgentNotReadyLabels(agent, sourceTenantId), locale.value);
-};
+const emitAgentNotReady = (agent: CustomAgent) => { const keys = getAgentNotReadyReasonKeysFor(agent); emit('not-ready', agent, formatAgentNotReadyReasons(keys, agent.is_builtin), keys) }
 
-const emitAgentNotReady = (agent: CustomAgent, sourceTenantId?: string) => {
-  const keys = getAgentNotReadyReasonKeysFor(agent, sourceTenantId);
-  const labels = formatAgentNotReadyReasons(keys, agent.is_builtin);
-  emit('not-ready', agent, labels, keys, sourceTenantId);
-};
 
 const clearDetailHideTimer = () => {
   if (detailHideTimer) {
@@ -467,21 +361,8 @@ const scheduleDetailPanelPosition = () => {
     requestAnimationFrame(() => updateDetailPanelPosition());
   });
 };
+const onOptionEnter = (agent: CustomAgent, event: MouseEvent) => { clearDetailHideTimer(); detailAnchorEl.value = event.currentTarget as HTMLElement; activeDetail.value = { agent }; scheduleDetailPanelPosition() }
 
-const onOptionEnter = (agent: CustomAgent, event: MouseEvent, sourceTenantId?: string, sharedMeta?: AgentDetailTarget['sharedMeta']) => {
-  clearDetailHideTimer();
-  detailAnchorEl.value = event.currentTarget as HTMLElement;
-  activeDetail.value = { agent, sourceTenantId, sharedMeta };
-  scheduleDetailPanelPosition();
-};
-
-const onSharedOptionEnter = (shared: SharedAgentSelection, event: MouseEvent) => {
-  onOptionEnter(shared.agent, event, String(shared.source_tenant_id), {
-    org_name: shared.org_name,
-    shared_by_username: shared.shared_by_username,
-    web_search_ready: shared.web_search_ready,
-  });
-};
 
 const onOptionLeave = () => {
   detailHideTimer = setTimeout(() => {
@@ -511,35 +392,13 @@ const selectAgent = (agent: CustomAgent) => {
   }
   emit('select', agent);
 };
-
-const selectSharedAgent = (shared: SharedAgentSelection) => {
-  const sourceTenantId = String(shared.source_tenant_id);
-  if (getAgentNotReadyLabels(shared.agent, sourceTenantId).length > 0) {
-    emitAgentNotReady(shared.agent, sourceTenantId);
-    return;
+const goToSettings = (agent: CustomAgent) => {
+    const reasonKeys = getAgentNotReadyReasonKeysFor(agent)
+    const highlight = resolveAgentNotReadyHighlight(reasonKeys)
+    hideDetailPanel(); emit('close')
+    router.push({ path: '/platform/agents', query: { edit: agent.id, section: reasonKeys.length ? resolveAgentNotReadySection(reasonKeys) : 'basic', ...(highlight ? { highlight } : {}) } })
   }
-  emit('select', shared.agent, sourceTenantId);
-};
 
-const goToSettings = (agent: CustomAgent, sourceTenantId?: string) => {
-  if (!canLocallyConfigureAgent(sourceTenantId) && getAgentNotReadyLabels(agent, sourceTenantId).length > 0) {
-    return;
-  }
-  const reasonKeys = getAgentNotReadyReasonKeysFor(agent, sourceTenantId);
-  const section = reasonKeys.length > 0 ? resolveAgentNotReadySection(reasonKeys) : 'basic';
-  const highlight = resolveAgentNotReadyHighlight(reasonKeys);
-  hideDetailPanel();
-  emit('close');
-  router.push({
-    path: '/platform/agents',
-    query: {
-      edit: agent.id,
-      section,
-      ...(highlight ? { highlight } : {}),
-      ...(sourceTenantId ? { sourceTenantId } : {}),
-    },
-  });
-};
 
 const updateDropdownPosition = () => {
   if (!props.anchorEl) return;
@@ -754,12 +613,6 @@ watch(activeDetail, (detail) => {
   line-height: 22px;
 }
 
-.shared-tag {
-  font-size: var(--app-text-2xs);
-  color: var(--td-text-color-placeholder);
-  flex-shrink: 0;
-  line-height: 22px;
-}
 
 .agent-option-actions {
   display: flex;
@@ -959,14 +812,6 @@ watch(activeDetail, (detail) => {
   background: var(--td-bg-color-container);
 }
 
-.detail-not-ready-shared-hint {
-  display: block;
-  width: 100%;
-  margin-top: 2px;
-  font-size: var(--app-text-2xs);
-  line-height: 1.4;
-  color: var(--td-text-color-placeholder);
-}
 
 .detail-desc {
   margin: 0 0 8px;

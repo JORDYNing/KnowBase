@@ -1459,13 +1459,10 @@ func (m *SessionBoundManager) walkSessionFiles(
 // request context; empty tenant is treated as a caller error to keep session
 // bindings globally addressable in Redis.
 //
-// It reads the session-owner tenant rather than the ambient request tenant so
-// that a shared agent — which runs under the agent owner's workspace so its
-// models, KBs and named sandbox configs resolve there — still binds its sandbox
-// under the session's own tenant. Session deletion tears the sandbox down from a
-// request that knows only that tenant, so any other choice would strand the
-// MicroVM. SandboxTenantIDFromContext falls back to the request tenant, which
-// is already the session owner on every non-borrowed path.
+// It uses the session-owner tenant so background execution scope changes
+// cannot change the durable binding key. Session deletion uses this same key
+// to reclaim the sandbox. SandboxTenantIDFromContext falls back to the request
+// tenant when no explicit session owner was captured.
 func (m *SessionBoundManager) sessionKey(
 	ctx context.Context,
 	sessionID string,

@@ -113,7 +113,7 @@ func (r sharedChunkFailureRepo) ListChunksByIDOnly(context.Context, []string) ([
 func TestSharedChunkReadPropagatesStorageFailure(t *testing.T) {
 	failure := errors.New("shared chunk storage unavailable")
 	svc := &knowledgeBaseService{chunkRepo: sharedChunkFailureRepo{failure: failure}}
-	rows, err := svc.listChunksByIDWithShared(newSharedAccessContext(), 1, []string{"own", "shared"})
+	rows, err := svc.listAuthorizedChunksByID(newSharedAccessContext(), 1, []string{"own", "shared"})
 	require.ErrorIs(t, err, failure)
 	require.Nil(t, rows)
 }

@@ -51,8 +51,6 @@ func NewMessageService(messageRepo interfaces.MessageRepository,
 	}
 }
 
-// sessionTenantIDForLookup returns the tenant ID to use for session lookup.
-// When SessionTenantIDContextKey is set (e.g. pipeline with shared agent), use it so session/message belong to session owner.
 func sessionTenantIDForLookup(ctx context.Context) (uint64, bool) {
 	if v := ctx.Value(types.SessionTenantIDContextKey); v != nil {
 		if tid, ok := v.(uint64); ok && tid != 0 {
@@ -69,7 +67,6 @@ func sessionTenantIDForLookup(ctx context.Context) (uint64, bool) {
 
 func sessionUserIDForLookup(ctx context.Context) string {
 	if ctx.Value(types.SessionTenantIDContextKey) != nil {
-		// Shared-agent pipelines resolve the session owner tenant first; keep that internal lookup tenant-scoped.
 		return ""
 	}
 	return types.SessionOwnerIDFromContext(ctx)

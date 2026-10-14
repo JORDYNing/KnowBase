@@ -268,7 +268,7 @@ Handler: `internal/handler/session/temporary_document.go`
 
 ### POST /api/v1/sessions/:session_id/attachments
 
-用途：上传会话级临时文档（异步解析）。multipart 字段：`file`（必填）、`agent_id`（可选，决定解析引擎/ASR 模型）、`parser_engine`（可选；使用共享智能体时忽略，由智能体的解析规则决定）。
+用途：上传会话级临时文档（异步解析）。multipart 字段：`file`（必填）、`agent_id`（可选，决定解析引擎/ASR 模型）、`parser_engine`（可选）。
 
 响应：202 `{"success":true,"data":{TemporaryDocument}}`（`id,session_id,file_name,file_type,file_size,status(uploaded/processing/ready/failed),resource_ref,...`）
 
@@ -375,11 +375,10 @@ Handler: `internal/handler/session/qa.go`。API key：聊天需 `chat`/full；`k
 | `knowledge_ids` | []string | 否 | 限定知识文件 |
 | `agent_enabled` | bool | 否 | 是否启用 Agent 模式 |
 | `agent_id` | string | 否 | 自定义 Agent ID |
-| `agent_source_tenant_id` | uint64 | 否 | 共享智能体的来源空间，同名共享智能体来自多个空间时用于区分 |
 | `reasoning_effort` | string | 否 | 本轮思考强度：`off`、`auto`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`（`none`/`false` 视为 `off`，`true`/`on` 视为 `auto`）；省略时沿用智能体配置。只作用于本轮，不修改智能体；模型不支持所选档位时自动调整到相近档位。非法值返回 400 |
 | `web_search_enabled` | bool | 否 | 联网搜索；只在智能体本身开启联网搜索时生效 |
 | `local_browser_enabled` | bool | 否 | 本轮允许使用已连接的本机浏览器；只能用于智能推理智能体的 `agent-chat`，否则返回 400。见[本机浏览器](../05-clients/09-local-browser.md) |
-| `summary_model_id` | string | 否 | 总结模型；使用共享智能体时忽略，始终使用智能体配置的模型 |
+| `summary_model_id` | string | 否 | 总结模型；仍受当前空间模型权限约束 |
 | `mcp_service_ids` | []string | 否 | @提及的 MCP 服务 |
 | `skill_names` | []string | 否 | @提及的技能 |
 | `tag_ids` | []string | 否 | 标签过滤 |
@@ -525,7 +524,7 @@ curl "$BASE/api/v1/sessions/session-1/messages/message-1/artifacts/0/download" \
 
 ### 删除生成的文件
 
-删除会回收对象存储中的字节，**不可恢复**。与下载不同，删除只对会话归属人开放：通过共享智能体获得的只读访问可以下载文件，但不能删除 —— 不属于自己的会话一律按 404 处理（不区分「不存在」和「无权限」，与其余会话接口一致）。已删除的文件返回 404，重复删除同样返回 404。
+删除会回收对象存储中的字节，**不可恢复**。与下载不同，删除只对会话归属人开放：文件路径和历史引用不能授予删除权限；不属于自己的会话一律按 404 处理（不区分「不存在」和「无权限」，与其余会话接口一致）。已删除的文件返回 404，重复删除同样返回 404。
 
 字节只有在没有任何其他持有者时才会真正回收：同一份文件被存入知识库、被后续回答重新引用，或者所在会话被分叉出副本，都会让它保留下来。回收失败不影响删除结果（接口仍返回 200），文件在各处列表中都已消失。
 
@@ -566,7 +565,7 @@ curl -X DELETE "$BASE/api/v1/artifacts?session_id=session-1&message_id=message-1
 
 ### 回答中的图片和文件引用
 
-`GET /api/v1/sessions/:id/messages/:message_id/files?file_path=...` 是消息级鉴权代理。file_path 传该消息引用的资源句柄或受支持的存储引用，客户端应 URL 编码。后端校验消息访问权、资源与消息的绑定及知识库/共享 Agent 的当前访问权；任意文件路径不能凭会话 ID 访问。授权撤销后旧消息引用也会被拒绝。适用于共享 Agent、组织共享库回答图片与消息产物，详见[文件访问](../03-features/21-file-access.md)。
+`GET /api/v1/sessions/:id/messages/:message_id/files?file_path=...` 是消息级鉴权代理。file_path 传该消息引用的资源句柄或受支持的存储引用，客户端应 URL 编码。后端校验消息访问权、资源与消息的绑定及当前空间、知识库及资源绑定的访问权；任意文件路径不能凭会话 ID 访问。授权撤销后旧消息引用也会被拒绝。适用于回答图片与消息产物，详见[文件访问](../03-features/21-file-access.md)。
 
 ### 每轮用量
 

@@ -49,7 +49,7 @@ type Client struct {
 | Option | 说明 |
 |---|---|
 | `WithAPIKey(key string)` | 设置长期有效的 API Key，以 `X-API-Key` 请求头发送 |
-| `WithBearerToken(token string)` | 设置短期 JWT，以 `Authorization: Bearer <token>` 请求头发送（通常在 `Login` 成功后使用） |
+| `WithBearerToken(token string)` | 设置短期 JWT，以 `Authorization: Bearer <token>` 请求头发送（由飞书认证签发） |
 | `WithToken(token string)` | **Deprecated**：`WithAPIKey` 的 v0.x 兼容别名，将在下个大版本移除 |
 | `WithTimeout(timeout time.Duration)` | 同时设置普通请求与流式请求的超时上限 |
 | `WithTransport(rt http.RoundTripper)` | 替换底层 `http.RoundTripper`（用于重试/埋点/签名等中间件）；传 `nil` 恢复 `http.DefaultTransport` |
@@ -60,39 +60,15 @@ type Client struct {
 SDK 支持两种凭证，可同时配置，HTTP 层 `X-API-Key` 优先：
 
 - **API Key**（长期）：`WithAPIKey`，请求头 `X-API-Key`；
-- **Bearer JWT**（短期）：`WithBearerToken`，请求头 `Authorization: Bearer <token>`，配合 `client/auth.go` 中的 `Login` / `RefreshToken` / `GetCurrentUser` 使用。
+- **Bearer JWT**（短期）：`WithBearerToken`，请求头 `Authorization: Bearer <token>`，配合 `client/auth.go` 中的 `RefreshToken` / `GetCurrentUser` 使用。
 
-典型 JWT 登录流程（对应 `POST /api/v1/auth/login`）：
+本项目的人类账号通过浏览器完成飞书认证，SDK 不执行密码登录。程序集成优先使用已授权的 API Key；需要用户会话时，把飞书签发的 access token 交给 `WithBearerToken`，并通过 `RefreshToken` 刷新。凭据与 KB 白名单共同限定资源范围。
 
-```go
-c := client.NewClient("http://localhost:8080")
-loginResp, err := c.Login(ctx, client.LoginRequest{ /* email + password */ })
-// 然后用返回的 access token 重建带认证的客户端
-authed := client.NewClient("http://localhost:8080",
-    client.WithBearerToken(loginResp.AccessToken))
-```
-
-### 租户（Tenant）与请求头注入
-
-`applyAuthHeaders`（`client/client.go`）会在每个请求上自动注入：
-
-- `X-API-Key` / `Authorization`（按配置）；
-- `X-Request-ID`：从 `ctx.Value("RequestID")`（string 类型）读取，用于链路追踪；
-- `X-Tenant-ID`：优先级为 context 中的 `"TenantID"` 值（支持 `uint64`、`*uint64`、数字字符串）> `WithTenantID` 的客户端级默认值。
-
-单请求租户覆盖示例：
-
-```go
-tenantID := uint64(10000)
-ctx := context.WithValue(context.Background(), "TenantID", &tenantID)
-kb, err := apiClient.GetKnowledgeBase(ctx, kbID)
-```
-
-注意：JWT 与租户级 API Key 本身已携带租户身份，普通用户**不应**设置 `X-Tenant-ID`（服务端 auth 中间件会对携带该头的 bearer 请求执行跨租户校验，普通用户会得到 403）。
+JWT 与租户级 API Key 已携带空间身份。`X-Tenant-ID` 不授予成员资格；服务端校验目标空间的有效成员关系或显式平台超管权限，不能用该请求头进入未获批空间。
 
 ### Raw 逃生舱
 
-`Client.Raw(ctx, method, path, body)`（Experimental）以客户端已配置的认证头直接发起任意 HTTP 请求，用于一次性集成与 `weknora api` CLI 透传；有类型化方法时应优先使用类型化方法。
+`Client.Raw(ctx, method, path, body)`（Experimental）以客户端已配置的认证头直接发起任意 HTTP 请求，用于一次性集成与 `gamelib api` CLI 透传；有类型化方法时应优先使用类型化方法。
 
 ## 资源与方法总览
 
@@ -102,12 +78,12 @@ kb, err := apiClient.GetKnowledgeBase(ctx, kbID)
 
 | 方法 | 说明 |
 |---|---|
-| `Login` | 邮箱密码登录，返回 JWT access/refresh token |
+| `Login` | 历史兼容方法；本项目关闭密码登录，调用返回拒绝 |
 | `GetCurrentUser` | 获取当前登录主体与租户信息（`GET /api/v1/auth/me`） |
 | `RefreshToken` | 用 refresh token 换取新 access token |
 | `SwitchTenant` | 切换到指定空间并重新签发 token 对，同时记为下次登录的默认空间（`POST /api/v1/auth/switch-tenant`） |
-| `ChangePassword` | 修改当前用户密码；成功后服务端吊销该用户所有会话，调用方应丢弃本地 token |
-| `GetAuthConfig` | 读取公开认证配置：注册模式、是否启用复杂密码（`GET /api/v1/auth/config`，无需认证） |
+| `ChangePassword` | 历史兼容方法；本项目不开放本地密码修改 |
+| `GetAuthConfig` | 读取固定的团队认证策略：仅飞书登录、关闭注册与自助创建空间（`GET /api/v1/auth/config`，无需认证） |
 
 ### 知识库 KnowledgeBase — `client/knowledgebase.go`
 
@@ -253,22 +229,6 @@ v0.8.2 起的两处请求字段变化：
 | `GetAPIPrincipalConfig` | 获取 API 主体配置 |
 | `UpdateAPIPrincipalConfig` | 更新 API 主体配置 |
 | `CreateAPIPrincipalTestToken` | 创建 API 主体测试 token |
-
-### 组织与共享 Organization — `client/organization.go`
-
-| 方法 | 说明 |
-|---|---|
-| `CreateOrganization` / `ListMyOrganizations` / `GetOrganization` / `UpdateOrganization` / `DeleteOrganization` | 组织 CRUD |
-| `SearchOrganizations` / `PreviewOrganizationByInviteCode` | 搜索/邀请码预览组织 |
-| `JoinOrganizationByInviteCode` / `SubmitJoinRequest` / `JoinByOrganizationID` / `LeaveOrganization` / `RequestRoleUpgrade` | 加入/退出/升级角色 |
-| `GenerateInviteCode` / `SearchUsersForInvite` / `InviteMember` | 邀请成员（`SearchUsersForInvite` 的限制见下方说明） |
-| `ListOrgMembers` / `UpdateMemberRole` / `RemoveMember` | 成员管理 |
-| `ListJoinRequests` / `ReviewJoinRequest` | 加入申请审批 |
-| `ShareKnowledgeBase` / `ListKBShares` / `UpdateSharePermission` / `RemoveKBShare` | 知识库共享 |
-| `ShareAgent` / `ListAgentShares` / `RemoveAgentShare` | Agent 共享 |
-| `ListOrgShares` / `ListOrgAgentShares` / `ListSharedKnowledgeBases` / `ListSharedAgents` | 共享资源查询 |
-
-自 v0.8.2 起，服务端邀请候选只按**完整空间 ID** 精确解析（`GET /api/v1/organizations/{id}/search-tenants?q=<空间ID>`），不再按空间名、用户名或邮箱搜索。`SearchUsersForInvite` 调用的是已废弃的 `search-users` 别名，并以 `keyword` 参数传值，服务端读取的是 `q`，因此该方法目前拿不到候选。需要查找候选时，请用 `Raw` 直接调用 `search-tenants`。
 
 ### FAQ — `client/faq.go`
 

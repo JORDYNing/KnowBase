@@ -188,17 +188,12 @@ func TestResolveTenantRole_AutoPromoteRequiresHomeTenant(t *testing.T) {
 	}
 }
 
-func TestResolveTenantRole_AutoPromoteHomeTenant(t *testing.T) {
-	// home tenant + 孤儿空间 + 非 switch → 允许 auto-promote 为 Owner。
+func TestResolveTenantRole_HomeTenantDoesNotAutoPromote(t *testing.T) {
 	svc := newFakeMemberService()
 	user := &types.User{ID: "u1", TenantID: 7}
-
-	got, ok := resolveTenantRole(context.Background(), svc, user, 7, false, cfgWithRBAC(true))
-	if !ok || got != types.TenantRoleOwner {
-		t.Fatalf("got (%v, %v), want (owner, true)", got, ok)
-	}
-	if len(svc.addCalls) != 1 || svc.addCalls[0].Role != types.TenantRoleOwner {
-		t.Fatalf("expected exactly one Owner AddMember call, got %+v", svc.addCalls)
+	role, ok := resolveTenantRole(context.Background(), svc, user, 7, false, cfgWithRBAC(false))
+	if ok || role != "" || len(svc.addCalls) != 0 {
+		t.Fatalf("missing membership must not grant a role: role=%s allowed=%v writes=%v", role, ok, svc.addCalls)
 	}
 }
 
@@ -217,13 +212,12 @@ func TestResolveTenantRole_AutoPromoteSkippedIfTenantHasMembers(t *testing.T) {
 	}
 }
 
-func TestResolveTenantRole_FailOpenAdminWhenRBACDisabled(t *testing.T) {
+func TestResolveTenantRole_LegacyRBACFlagCannotGrantAdmin(t *testing.T) {
 	svc := newFakeMemberService()
 	user := &types.User{ID: "u1", TenantID: 7}
-	// targetTenantID != home，所以不进 auto-promote 分支。
-	got, ok := resolveTenantRole(context.Background(), svc, user, 8, false, cfgWithRBAC(false))
-	if !ok || got != types.TenantRoleAdmin {
-		t.Fatalf("EnableRBAC=false should fail open Admin, got (%v, %v)", got, ok)
+	role, ok := resolveTenantRole(context.Background(), svc, user, 7, false, cfgWithRBAC(false))
+	if ok || role != "" || len(svc.addCalls) != 0 {
+		t.Fatalf("missing membership must not grant a role: role=%s allowed=%v writes=%v", role, ok, svc.addCalls)
 	}
 }
 
@@ -237,30 +231,20 @@ func TestResolveTenantRole_FailClosedWhenRBACEnabled(t *testing.T) {
 	}
 }
 
-func TestResolveTenantRole_LookupErrorFailsOpenWhenRBACDisabled(t *testing.T) {
-	// 短暂 DB 错误时，fail-open 模式不应锁死现有用户。这里 targetTenantID 故意
-	// 选与 home 不同的值，避免进入 home-tenant auto-promote 分支。
+func TestResolveTenantRole_LookupErrorFailsClosedDespiteLegacyFlag(t *testing.T) {
 	svc := newFakeMemberService()
 	svc.failGet = errors.New("transient db failure")
-	// 让 HasAnyMembers 返回 true，关闭孤儿空间自愈路径。
-	svc.seedActive("placeholder", 8, types.TenantRoleAdmin)
-	user := &types.User{ID: "u1", TenantID: 7}
-
-	got, ok := resolveTenantRole(context.Background(), svc, user, 8, false, cfgWithRBAC(false))
-	if !ok || got != types.TenantRoleAdmin {
-		t.Fatalf("transient lookup error under RBAC=false should fail open Admin, got (%v, %v)", got, ok)
+	role, ok := resolveTenantRole(context.Background(), svc, &types.User{ID: "u1", TenantID: 7}, 7, false, cfgWithRBAC(false))
+	if ok || role != "" {
+		t.Fatalf("membership lookup error must fail closed: role=%s allowed=%v", role, ok)
 	}
 }
 
 func TestResolveTenantRole_DemotedUserCannotReclaimViaOrphan(t *testing.T) {
-	// 边界场景：管理员人为软删全部成员后，被踢出的用户不应在登录自己 home tenant 时
-	// 因 HasAnyMembers=false 而自动重新拿到 Owner。
-	// 当前实现的策略是 "home tenant + 孤儿 => Owner"，这是设计选择；本测试为这条
-	// 路径加锁，未来如果收紧策略需要同步更新。
 	svc := newFakeMemberService()
-	user := &types.User{ID: "demoted", TenantID: 5}
-	got, ok := resolveTenantRole(context.Background(), svc, user, 5, false, cfgWithRBAC(true))
-	if !ok || got != types.TenantRoleOwner {
-		t.Fatalf("current policy allows orphan-tenant self-heal on home tenant, got (%v, %v)", got, ok)
+	user := &types.User{ID: "u1", TenantID: 7}
+	role, ok := resolveTenantRole(context.Background(), svc, user, 7, false, cfgWithRBAC(false))
+	if ok || role != "" || len(svc.addCalls) != 0 {
+		t.Fatalf("missing membership must not grant a role: role=%s allowed=%v writes=%v", role, ok, svc.addCalls)
 	}
 }

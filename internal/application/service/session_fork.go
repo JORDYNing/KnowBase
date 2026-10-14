@@ -255,15 +255,13 @@ func (s *SessionForkService) Fork(
 	}
 
 	newSession := &types.Session{
-		ID:               uuid.New().String(),
-		TenantID:         source.TenantID,
-		UserID:           source.UserID,
-		Title:            forkTitle(title, source.Title),
-		Description:      source.Description,
-		LastRequestState: source.LastRequestState,
-		SandboxConfigID:  source.SandboxConfigID,
-		// The owner travels with the config id, or the branch would inherit a
-		// pin that resolves nowhere the moment the source ran a shared agent.
+		ID:                    uuid.New().String(),
+		TenantID:              source.TenantID,
+		UserID:                source.UserID,
+		Title:                 forkTitle(title, source.Title),
+		Description:           source.Description,
+		LastRequestState:      source.LastRequestState,
+		SandboxConfigID:       source.SandboxConfigID,
 		SandboxConfigTenantID: source.SandboxConfigTenantID,
 		HostWorkspaceDir:      source.HostWorkspaceDir,
 		ParentSessionID:       source.ID,
@@ -376,10 +374,7 @@ func (s *SessionForkService) recordSnapshotLease(
 		return nil
 	}
 	lease := &types.ForkSnapshotLease{
-		SnapshotID: bootstrap.SnapshotID,
-		// The reaper resolves (TenantID, SandboxConfigID) as a pair, so this
-		// must be the workspace that owns the config — the lending one when
-		// the snapshot was taken on a shared agent's sandbox.
+		SnapshotID:      bootstrap.SnapshotID,
 		TenantID:        source.SandboxConfigOwner(),
 		SandboxConfigID: source.SandboxConfigID,
 		CreatedAt:       time.Now().UTC(),

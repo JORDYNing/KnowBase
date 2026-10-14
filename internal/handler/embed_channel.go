@@ -705,7 +705,6 @@ func patchEmbedChatPayload(body io.Reader, ch *types.EmbedChannel, agentMode boo
 	payload["knowledge_base_ids"] = []string{}
 	// Visitors are anonymous and run as Viewer of the whole channel workspace.
 	// Explicit targets (documents, tags, @mentions) and a model override are
-	// only honored within an agent's scope for shared agents, so for a
 	// channel's own agent they would reach any KB or model of the workspace by
 	// ID. A question origin selects a KB like an @mention for agents that
 	// retrieve only when mentioned. The widget never sends any of them;

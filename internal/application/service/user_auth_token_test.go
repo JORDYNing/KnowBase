@@ -134,7 +134,7 @@ func newAuthTestUserService(tokenRepo *stubAuthTokenRepo) *userService {
 	return &userService{
 		userRepo: &stubUserRepoForAuth{
 			users: map[string]*types.User{
-				"user-1": {ID: "user-1", TenantID: 1},
+				"user-1": {ID: "user-1", TenantID: 1, IsActive: true},
 			},
 		},
 		tokenRepo: tokenRepo,
@@ -414,5 +414,33 @@ func TestGetAccessTokenLookupsRedactJWT(t *testing.T) {
 	}
 	if byID.ID != "tok-1" || byID.Token != "" {
 		t.Fatalf("GetAccessTokenByID = %+v, want id tok-1 with redacted token", byID)
+	}
+}
+
+func TestTeamDisabledAccountRejectsExistingAccessAndRefreshTokens(t *testing.T) {
+	ctx := context.Background()
+	tokens := &stubAuthTokenRepo{tokens: map[string]*types.AuthToken{}}
+	svc := newAuthTestUserService(tokens)
+	user := svc.userRepo.(*stubUserRepoForAuth).users["user-1"]
+	user.TenantID = types.TeamTenantID
+	svc.memberService = &membershipLookupService{byTenant: map[uint64]*types.TenantMember{types.TeamTenantID: {TenantID: types.TeamTenantID, Status: types.TenantMemberStatusActive, Role: types.TenantRoleAdmin}}}
+	svc.tenantService = &provisioningTenantService{}
+	access, refresh, err := svc.GenerateTokens(ctx, user)
+	if err != nil {
+		t.Fatalf("issue active account tokens: %v", err)
+	}
+	if _, _, err := svc.ValidateToken(ctx, access); err != nil {
+		t.Fatalf("active token rejected: %v", err)
+	}
+	user.IsActive = false
+	if authenticated, tenantID, err := svc.ValidateToken(ctx, access); !errors.Is(err, ErrAccountInactive) || authenticated != nil || tenantID != 0 {
+		t.Fatalf("disabled access: user=%v tenant=%v err=%v", authenticated, tenantID, err)
+	}
+	before := tokens.createCalls
+	if access, refresh, err := svc.RefreshToken(ctx, refresh); !errors.Is(err, ErrAccountInactive) || access != "" || refresh != "" {
+		t.Fatalf("disabled refresh: access=%q refresh=%q err=%v", access, refresh, err)
+	}
+	if tokens.createCalls != before {
+		t.Fatal("disabled account minted new credentials")
 	}
 }

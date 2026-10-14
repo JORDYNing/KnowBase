@@ -62,7 +62,7 @@ func (t *DataSchemaTool) Execute(ctx context.Context, args json.RawMessage) (*ty
 		}, err
 	}
 
-	// Get knowledge to get TenantID (use IDOnly to support cross-tenant shared KB)
+	// Resolve the persisted document and enforce the admitted search-target scope.
 	var knowledge *types.Knowledge
 	var err error
 	if t.scopeEnforced {

@@ -101,7 +101,7 @@ func networkFreeFactory(t *testing.T) *cmdutil.Factory {
 	return f
 }
 
-// TestConfigView_EnvCredentialSurfaced: when WEKNORA_API_KEY + WEKNORA_HOST are
+// TestConfigView_EnvCredentialSurfaced: when GAMELIB_API_KEY + GAMELIB_HOST are
 // set, config view reports the env override (auth_source + the env host), not
 // the bypassed config profile's host.
 func TestConfigView_EnvCredentialSurfaced(t *testing.T) {
@@ -111,10 +111,10 @@ func TestConfigView_EnvCredentialSurfaced(t *testing.T) {
 		Profiles:       map[string]config.Profile{"prod": {Host: "https://configured.example.com"}},
 	}
 	require.NoError(t, config.Save(cfg))
-	t.Setenv("WEKNORA_API_KEY", "sk-test")
-	t.Setenv("WEKNORA_HOST", "https://env-override.example.com")
+	t.Setenv("GAMELIB_API_KEY", "sk-test")
+	t.Setenv("GAMELIB_HOST", "https://env-override.example.com")
 
 	env := runViewJSON(t, networkFreeFactory(t))
-	assert.Contains(t, env.Data.AuthSource, "WEKNORA_API_KEY env")
+	assert.Contains(t, env.Data.AuthSource, "GAMELIB_API_KEY env")
 	assert.Equal(t, "https://env-override.example.com", env.Data.Host, "host must be the env override, not the profile host")
 }

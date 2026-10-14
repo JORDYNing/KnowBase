@@ -187,7 +187,6 @@ export type SandboxDesktopSession = {
 export function useSandboxDesktop(
   sessionId: Ref<string>,
   agentId: Ref<string | undefined>,
-  agentSourceTenantId: Ref<string | number | null | undefined> = ref(undefined),
 ): SandboxDesktopSession {
   const status = ref<SandboxDesktopStatus>('starting')
 
@@ -240,10 +239,7 @@ export function useSandboxDesktop(
       query.set('provision', '1')
       const agent = agentId.value
       if (agent && agent !== 'builtin-quick-answer') query.set('agent_id', agent)
-      const sourceTenant = agentSourceTenantId.value
-      if (sourceTenant != null && String(sourceTenant).trim() !== '') {
-        query.set('agent_source_tenant_id', String(sourceTenant).trim())
-      }
+
     }
     return `${resolveWsBase()}/api/v1/sessions/${encodeURIComponent(sessionId.value)}` +
       `/sandbox/desktop?${query.toString()}`

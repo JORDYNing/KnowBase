@@ -9,28 +9,11 @@ import (
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 
-// Service reads accept exact upstream grants. Otherwise cross-tenant reads
-// require a user and organization permission resolved for the original caller.
-func kbReadPermissions(ctx context.Context, shares access.KBShareLookup) *access.KBPermissions {
-	if types.CallerFromContext(ctx).UserID == "" {
-		shares = nil
-	}
-	return access.NewKBPermissions(ctx, shares)
+// Service reads accept tenant ownership or an exact upstream operation grant.
+func kbReadPermissions(ctx context.Context) *access.KBPermissions {
+	return access.NewKBPermissions(ctx)
 }
-
-// kbWritableIDs returns the target KBs the caller may modify: those of its own
-// workspace, and those shared to it with at least editor permission (capped by
-// the caller's tenant role). A read grant — a viewer share or a shared agent's
-// scope — never makes a KB writable.
-//
-// The caller must also be allowed to write KB content at all, as on the HTTP
-// write routes: Contributor+ (a tenant Viewer, and the IM, embed and MCP
-// endpoint principals that run as Viewer, stay read-only), or for a scoped API
-// key the ingest capability, as in access.RequireKBWrite. roleEnforced mirrors
-// the RBAC rollout switch, under which role checks only log.
-func kbWritableIDs(
-	ctx context.Context, shares access.KBShareLookup, targets types.SearchTargets, roleEnforced bool,
-) []string {
+func kbWritableIDs(ctx context.Context, targets types.SearchTargets, roleEnforced bool) []string {
 	caller := types.CallerFromContext(ctx)
 	if scope, ok := types.TenantAPIKeyScopeFromContext(ctx); ok {
 		if !scope.FullAccess && !scope.HasCapability(types.APIKeyCapabilityIngest) {
@@ -39,32 +22,22 @@ func kbWritableIDs(
 	} else if roleEnforced && !caller.Role.HasPermission(types.TenantRoleContributor) {
 		return nil
 	}
-	if caller.UserID == "" {
-		shares = nil
-	}
-	permissions := access.NewKBSharePermissions(ctx, shares, caller.TenantID, caller.Role)
-	seen := make(map[string]bool, len(targets))
+	seen := map[string]bool{}
 	var ids []string
 	for _, target := range targets {
 		if target == nil || target.KnowledgeBaseID == "" || seen[target.KnowledgeBaseID] {
 			continue
 		}
 		seen[target.KnowledgeBaseID] = true
-		writable := caller.TenantID != 0 && target.TenantID == caller.TenantID
-		if !writable {
-			writable, _ = permissions.Check(target.KnowledgeBaseID, types.OrgRoleEditor)
-		}
-		if writable {
+		if caller.TenantID != 0 && target.TenantID == caller.TenantID && types.AuthorizeTenantAPIKeyKnowledgeBases(ctx, target.KnowledgeBaseID) == nil {
 			ids = append(ids, target.KnowledgeBaseID)
 		}
 	}
 	return ids
 }
-
-func resolveKBReadTenant(ctx context.Context, kb *types.KnowledgeBase, shares access.KBShareLookup) (uint64, error) {
+func resolveKBReadTenant(ctx context.Context, kb *types.KnowledgeBase) (uint64, error) {
 	if kb != nil {
-		allowed, err := kbReadPermissions(ctx, shares).Check(kb.ID, kb.TenantID, types.OrgRoleViewer)
-		if err == nil && allowed {
+		if allowed, err := kbReadPermissions(ctx).Check(kb.ID, kb.TenantID, types.KBPermissionRead); err == nil && allowed {
 			return kb.TenantID, nil
 		}
 	}
@@ -93,8 +66,6 @@ func (s *knowledgeService) writableFAQKnowledgeBase(
 	return kb, ctx, err
 }
 
-// A shared KB mutation must also resolve models/index backends against its
-// owner. The authenticated caller remains unchanged when TenantInfo changes.
 func withKBWriteTenantInfo(
 	ctx context.Context,
 	kb *types.KnowledgeBase,

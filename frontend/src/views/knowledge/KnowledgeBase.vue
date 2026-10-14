@@ -9,14 +9,11 @@ import ContextualGuide from '@/components/ContextualGuide.vue';
 import KBInfoPopover from '@/components/KBInfoPopover.vue';
 import KBSwitcherDropdown from '@/components/KBSwitcherDropdown.vue';
 import { useUIStore } from '@/stores/ui';
-import { useOrganizationStore } from '@/stores/organization';
 import { useAuthStore } from '@/stores/auth';
-import { permissionCanEditKB, permissionCanManageKB } from '@/utils/kbPermission';
 import { useChatResourcesStore } from '@/stores/chatResources';
 import { useEditorResourcesStore } from '@/stores/editorResources';
 import KnowledgeBaseEditorModal from './KnowledgeBaseEditorModal.vue';
 const uiStore = useUIStore();
-const orgStore = useOrganizationStore();
 const authStore = useAuthStore();
 const chatResources = useChatResourcesStore();
 const editorResources = useEditorResourcesStore();
@@ -284,64 +281,8 @@ const isOwner = computed(() => {
   return creatorId === userId;
 });
 
-// Current KB's shared record (when accessed via organization share)
-const currentSharedKb = computed(() =>
-  orgStore.sharedKnowledgeBases.find((s) => s.knowledge_base?.id === kbId.value) ?? null,
-);
-
-// Accessed via organization share: when the KB shows up in our
-// sharedKnowledgeBases list it means we reached it through a shared space,
-// not because we own/manage it in our tenant. In that case the user's local
-// tenant role does NOT grant edit/manage — only the share grant does.
-// Without this guard a local tenant Admin would see edit/upload entries on
-// a read-only shared KB and get 403'd by the backend on click.
-//
-// Note: tenant_id comparison alone is unreliable — a user can be a member of
-// both the source and receiving tenants, and currentTenantId reflects the
-// active switcher rather than "how this KB became visible to me". Presence
-// in the share list is the authoritative signal.
-const isViaShare = computed(() => !!currentSharedKb.value);
-
-// Effective permission: from direct org share list or from GET /knowledge-bases/:id (e.g. agent-visible KB).
-// Declared first: the canEdit / canManage gates below treat an explicit
-// cross-tenant grant as the single source of truth.
-const effectiveKBPermission = computed(() => orgStore.getKBPermission(kbId.value) || kbInfo.value?.my_permission || '');
-
-// Can edit: when accessed via an organization share, ONLY the share grant
-// counts — even if the current user happens to be the original creator of
-// the KB. The backend's RBAC middleware authorizes based on the active
-// tenant, not on creator_id, so a creator viewing their own KB from a
-// different tenant context will be 403'd on write. Otherwise: KB creator
-// (any role) or tenant Admin+ in the home tenant.
-//
-// A resolved cross-tenant permission (org share or shared-agent visibility,
-// already capped server-side by effective = min(share, org_role, tenant_role))
-// outranks every local signal: without this priority rule a personal-workspace
-// admin browsing a read-only shared KB saw edit entries that only led to 403s
-// (#3098).
-//
-// hasRole('contributor') is intentionally NOT here — being a Contributor
-// in a tenant does not by itself grant edit on someone else's KB.
-const canEdit = computed(() => {
-  const permission = effectiveKBPermission.value;
-  if (permission) return permissionCanEditKB(permission);
-  if (isViaShare.value) return orgStore.canEditKB(kbId.value, false);
-  if (isOwner.value) return true;
-  if (authStore.hasRole('admin')) return true;
-  return orgStore.canEditKB(kbId.value, false);
-});
-
-// Can manage (delete, settings, etc.): same permission-first rule. For
-// shared KBs only an 'admin' share grant qualifies — editor/viewer (and
-// even being the creator viewed via share) never grant delete/settings.
-const canManage = computed(() => {
-  const permission = effectiveKBPermission.value;
-  if (permission) return permissionCanManageKB(permission);
-  if (isViaShare.value) return orgStore.canManageKB(kbId.value, false);
-  if (isOwner.value) return true;
-  if (authStore.hasRole('admin')) return true;
-  return orgStore.canManageKB(kbId.value, false);
-});
+const canEdit = computed(() => isOwner.value || authStore.hasRole('admin'));
+const canManage = computed(() => isOwner.value || authStore.hasRole('admin'));
 
 // The activity feed exposes owner-side actor and configuration summaries.
 // It lives in KB settings (KnowledgeBaseEditorModal) for Owner/Admin in the home tenant.
@@ -355,7 +296,6 @@ const canManage = computed(() => {
 // grant, so trust it.
 const canMutateKnowledge = computed(() => {
   if (!canEdit.value) return false;
-  if (isViaShare.value) return true;
   if (isOwner.value) return true;
   if (authStore.hasRole('admin')) return true;
   return authStore.hasRole('contributor');
@@ -365,11 +305,7 @@ const canMutateKnowledge = computed(() => {
 // restrictive than viewing parsed content or using the preview tab. A tenant
 // Viewer can never download; for cross-tenant KBs the effective share
 // permission must additionally be Editor or Admin.
-const canDownloadKnowledge = computed(() => {
-  if (!authStore.hasRole('contributor')) return false;
-  const permission = effectiveKBPermission.value;
-  return !permission || permission === 'owner' || permission === 'admin' || permission === 'editor';
-});
+const canDownloadKnowledge = computed(() => authStore.hasRole('contributor'));
 
 const knowledgeList = ref<Array<{ id: string; name: string; type?: string }>>([]);
 let { cardList, total, moreIndex, details, getKnowled, onVisibleChange: _onVisibleChange, getCardDetails, getfDetails } = useKnowledgeBase(kbId.value)
@@ -1100,20 +1036,7 @@ const loadKnowledgeList = async () => {
       type: item.type || 'document',
     }));
 
-    // Also include shared knowledge bases from orgStore
-    const sharedKbs = (orgStore.sharedKnowledgeBases || [])
-      .filter(s => s.knowledge_base != null)
-      .map(s => ({
-        id: String(s.knowledge_base.id),
-        name: s.knowledge_base.name,
-        type: s.knowledge_base.type || 'document',
-      }));
-
-    // Merge and deduplicate by id (my KBs take precedence)
-    const myKbIds = new Set(myKbs.map(kb => kb.id));
-    const uniqueSharedKbs = sharedKbs.filter(kb => !myKbIds.has(kb.id));
-
-    knowledgeList.value = [...myKbs, ...uniqueSharedKbs];
+    knowledgeList.value = myKbs;
   } catch (error) {
     console.error('Failed to load knowledge list:', error);
   }

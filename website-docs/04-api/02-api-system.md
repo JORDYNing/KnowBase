@@ -134,7 +134,7 @@ curl $BASE/api/v1/system/admin/list -H "Authorization: Bearer $TOKEN"
 | 400 | 参数或密码策略不满足 |
 | 409 | 邮箱与用户名对应不同身份 |
 
-这是原始响应对象，没有 success/data 包装，也没有 idempotent 字段。用 HTTP 状态区分新增与已有账号。空间分配遵循 auth.default_tenant_mode。
+这是原始响应对象，没有 success/data 包装，也没有 idempotent 字段。用 HTTP 状态区分新增与已有账号。新身份始终无空间，不创建个人空间；本地密码不能登录。用户仍须通过飞书认证并获批加入 10000。
 
 ```bash
 curl -i -X POST "$BASE/api/v1/system/admin/users/create" \
@@ -196,7 +196,7 @@ curl $BASE/api/v1/system/admin/settings -H "Authorization: Bearer $TOKEN"
 
 ### PUT /api/v1/system/admin/settings/:key
 
-用途：更新设置（平台 key 需 `system_settings_manage`）。请求体：`{"value":<任意 JSON，按注册表类型校验>}`（必填）。
+用途：更新可修改的设置（平台 key 需 `system_settings_manage`）。注册模式、默认空间策略与普通用户自助创建为固定只读值，旧配置不能重新启用。请求体：`{"value":<任意 JSON，按注册表类型校验>}`（必填）。
 
 响应：200 `SystemSetting`
 

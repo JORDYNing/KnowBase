@@ -34,8 +34,6 @@ type knowledgeBaseService struct {
 	repo            interfaces.KnowledgeBaseRepository
 	kgRepo          interfaces.KnowledgeRepository
 	chunkRepo       interfaces.ChunkRepository
-	shareRepo       interfaces.KBShareRepository
-	kbShareService  interfaces.KBShareService
 	modelService    interfaces.ModelService
 	retrieveEngine  interfaces.RetrieveEngineRegistry
 	ownership       retriever.TenantStoreOwnership
@@ -58,8 +56,6 @@ type knowledgeBaseService struct {
 func NewKnowledgeBaseService(repo interfaces.KnowledgeBaseRepository,
 	kgRepo interfaces.KnowledgeRepository,
 	chunkRepo interfaces.ChunkRepository,
-	shareRepo interfaces.KBShareRepository,
-	kbShareService interfaces.KBShareService,
 	modelService interfaces.ModelService,
 	retrieveEngine interfaces.RetrieveEngineRegistry,
 	ownership retriever.TenantStoreOwnership,
@@ -81,8 +77,6 @@ func NewKnowledgeBaseService(repo interfaces.KnowledgeBaseRepository,
 		repo:            repo,
 		kgRepo:          kgRepo,
 		chunkRepo:       chunkRepo,
-		shareRepo:       shareRepo,
-		kbShareService:  kbShareService,
 		modelService:    modelService,
 		retrieveEngine:  retrieveEngine,
 		ownership:       ownership,
@@ -312,8 +306,6 @@ func (s *knowledgeBaseService) GetKnowledgeBaseByID(ctx context.Context, id stri
 	return kb, nil
 }
 
-// GetKnowledgeBaseByIDOnly retrieves knowledge base by ID without tenant filter
-// Used for cross-tenant shared KB access where permission is checked elsewhere
 func (s *knowledgeBaseService) GetKnowledgeBaseByIDOnly(ctx context.Context, id string) (*types.KnowledgeBase, error) {
 	if id == "" {
 		logger.Error(ctx, "Knowledge base ID is empty")
@@ -413,7 +405,6 @@ func (s *knowledgeBaseService) ListKnowledgeBases(ctx context.Context) ([]*types
 	return kbs, nil
 }
 
-// ListKnowledgeBasesByTenantID returns all knowledge bases for the given tenant (e.g. for shared agent context).
 func (s *knowledgeBaseService) ListKnowledgeBasesByTenantID(ctx context.Context, tenantID uint64) ([]*types.KnowledgeBase, error) {
 	kbs, err := s.repo.ListKnowledgeBasesByTenantID(ctx, tenantID)
 	if err != nil {
@@ -440,11 +431,6 @@ func (s *knowledgeBaseService) ListKnowledgeBasesByTenantID(ctx context.Context,
 		}
 	}
 
-	// Stamp pin state from the caller's perspective. The tenantID
-	// argument may not match the caller's own tenant (this method is
-	// also used to list a shared-agent's source-tenant KBs); we still
-	// scope user_kb_pins by `tenantID` since a pin tied to one tenant
-	// shouldn't surface when browsing another tenant's KBs.
 	if userID, ok := types.UserIDFromContext(ctx); ok && userID != "" {
 		s.applyUserKBPins(ctx, tenantID, userID, kbs)
 	}
@@ -701,11 +687,6 @@ func (s *knowledgeBaseService) TogglePinKnowledgeBase(
 		return nil, errors.New("pin requires an authenticated user")
 	}
 
-	// Look the KB up without a tenant filter: the route's KBAccessRead
-	// guard already validated that this caller can see this KB (own,
-	// org-shared, or agent-shared). Filtering by the caller's tenant
-	// here would 404 every legitimate pin against a shared KB whose
-	// owning tenant differs from the caller's active tenant.
 	kb, err := s.repo.GetKnowledgeBaseByID(ctx, id)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
@@ -854,13 +835,6 @@ func (s *knowledgeBaseService) DeleteKnowledgeBase(ctx context.Context, id strin
 	)
 	s.cleanupTasksForKnowledgeBase(kbCleanupCtx, id, nil, nil)
 	cancelKBCleanup()
-
-	// Step 1b: Remove all organization shares for this KB so org settings no longer show them
-	if s.shareRepo != nil {
-		if delErr := s.shareRepo.DeleteByKnowledgeBaseID(ctx, id); delErr != nil {
-			logger.Warnf(ctx, "Failed to delete KB shares for knowledge base %s: %v", id, delErr)
-		}
-	}
 
 	// Step 1c: Stop and soft-delete all data sources bound to this KB so cron
 	// schedules and in-flight sync logs do not keep running against a deleted KB.
@@ -1397,7 +1371,6 @@ func (s *knowledgeBaseService) DuplicateKnowledgeBase(
 	targetKB.ChunkCount = 0
 	targetKB.IsProcessing = false
 	targetKB.ProcessingCount = 0
-	targetKB.ShareCount = 0
 	targetKB.CreatorName = ""
 	targetKB.EnsureDefaults()
 	targetKB.Normalize()

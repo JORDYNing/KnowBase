@@ -10,8 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	apprepo "github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
@@ -236,9 +238,10 @@ func TestLoginWithFeishuOpenIDHit(t *testing.T) {
 	defer server.Close()
 
 	svc := &userService{
-		userRepo:      repo,
-		tokenRepo:     &feishuTokenRepo{},
-		tenantService: &provisioningTenantService{},
+		userRepo:           repo,
+		joinRequestService: &feishuJoinRequestStub{},
+		tokenRepo:          &feishuTokenRepo{},
+		tenantService:      &provisioningTenantService{},
 		memberService: &membershipLookupService{byTenant: map[uint64]*types.TenantMember{
 			1: {TenantID: 1, Status: types.TenantMemberStatusActive, Role: types.TenantRoleOwner},
 		}},
@@ -274,9 +277,10 @@ func TestLoginWithFeishuEmailLink(t *testing.T) {
 	defer server.Close()
 
 	svc := &userService{
-		userRepo:      repo,
-		tokenRepo:     &feishuTokenRepo{},
-		tenantService: &provisioningTenantService{},
+		userRepo:           repo,
+		joinRequestService: &feishuJoinRequestStub{},
+		tokenRepo:          &feishuTokenRepo{},
+		tenantService:      &provisioningTenantService{},
 		memberService: &membershipLookupService{byTenant: map[uint64]*types.TenantMember{
 			2: {TenantID: 2, Status: types.TenantMemberStatusActive, Role: types.TenantRoleOwner},
 		}},
@@ -313,8 +317,9 @@ func TestLoginWithFeishuEmailConflict(t *testing.T) {
 	defer server.Close()
 
 	svc := &userService{
-		userRepo:  repo,
-		tokenRepo: &feishuTokenRepo{},
+		userRepo:           repo,
+		joinRequestService: &feishuJoinRequestStub{},
+		tokenRepo:          &feishuTokenRepo{},
 		config: &config.Config{FeishuLogin: &config.FeishuLoginConfig{
 			Enable: true, AppID: "id", AppSecret: "secret",
 			TokenEndpoint:    server.URL + "/token",
@@ -337,10 +342,11 @@ func TestLoginWithFeishuAutoProvisionNoEmail(t *testing.T) {
 	defer server.Close()
 
 	svc := &userService{
-		userRepo:      repo,
-		tokenRepo:     &feishuTokenRepo{},
-		tenantService: &provisioningTenantService{},
-		memberService: &membershipLookupService{},
+		userRepo:           repo,
+		joinRequestService: &feishuJoinRequestStub{},
+		tokenRepo:          &feishuTokenRepo{},
+		tenantService:      &provisioningTenantService{},
+		memberService:      &membershipLookupService{},
 		config: &config.Config{FeishuLogin: &config.FeishuLoginConfig{
 			Enable: true, AppID: "id", AppSecret: "secret",
 			TokenEndpoint:    server.URL + "/token",
@@ -363,5 +369,71 @@ func TestLoginWithFeishuAutoProvisionNoEmail(t *testing.T) {
 	}
 	if repo.createCalls == 0 {
 		t.Fatalf("expected CreateUser via Register")
+	}
+}
+
+func (r *feishuTestUserRepo) BindFeishuIdentity(ctx context.Context, userID, openID string) (*types.User, error) {
+	user, err := r.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user.FeishuOpenID != "" && user.FeishuOpenID != openID {
+		return nil, apprepo.ErrFeishuIdentityAlreadyBound
+	}
+	user.FeishuOpenID = openID
+	if err := r.UpdateUser(ctx, user); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+func (r *feishuTestUserRepo) UpdateFeishuAvatar(ctx context.Context, userID, openID, avatar string) error {
+	user, err := r.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user.FeishuOpenID != openID {
+		return apprepo.ErrFeishuIdentityAlreadyBound
+	}
+	user.Avatar = avatar
+	return r.UpdateUser(ctx, user)
+}
+
+type feishuJoinRequestStub struct {
+	interfaces.TenantJoinRequestService
+	email  string
+	userID string
+	err    error
+}
+
+func (s *feishuJoinRequestStub) EnsureFeishuApplication(_ context.Context, user *types.User, email string) error {
+	s.email = email
+	s.userID = user.ID
+	return s.err
+}
+func TestTeamFeishuVerifiedBootstrapEmailUsesEnterpriseFirst(t *testing.T) {
+	for _, tt := range []struct {
+		info feishuUserInfoData
+		want string
+	}{
+		{feishuUserInfoData{EnterpriseEmail: "  JORDYN.JI@IDREAMSKY.COM ", Email: "other@example.com"}, types.TeamBootstrapOwnerEmail},
+		{feishuUserInfoData{EnterpriseEmail: "other@example.com", Email: types.TeamBootstrapOwnerEmail}, "other@example.com"},
+		{feishuUserInfoData{Email: " JORDYN.JI@IDREAMSKY.COM "}, types.TeamBootstrapOwnerEmail},
+		{feishuUserInfoData{Name: types.TeamBootstrapOwnerEmail}, ""},
+	} {
+		if got := feishuVerifiedEmail(&tt.info); got != tt.want {
+			t.Fatalf("verified email=%q want=%q", got, tt.want)
+		}
+	}
+}
+func TestTeamAlternativeLoginServicesDisabled(t *testing.T) {
+	svc := &userService{}
+	if _, err := svc.Login(context.Background(), &types.LoginRequest{}); !errors.Is(err, ErrAlternativeLoginDisabled) {
+		t.Fatalf("password login: %v", err)
+	}
+	if _, err := svc.GetOIDCAuthorizationURL(context.Background(), "https://example.com"); !errors.Is(err, ErrAlternativeLoginDisabled) {
+		t.Fatalf("OIDC URL: %v", err)
+	}
+	if _, err := svc.LoginWithOIDC(context.Background(), "code", "https://example.com", types.TenantProvisioningCreatePersonal); !errors.Is(err, ErrAlternativeLoginDisabled) {
+		t.Fatalf("OIDC login: %v", err)
 	}
 }

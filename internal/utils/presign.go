@@ -130,8 +130,8 @@ func ValidateStoragePathTenant(filePath string, tenantID uint64) error {
 // ValidateKBScopedStoragePath is used by GET /knowledge-bases/:id/files. It
 // requires the path to belong to the KB owner tenant and to live under the
 // exports/ namespace used for embedded images (SaveBytes / multimodal output).
-// This prevents borrowers with shared-KB read access from using the proxy to
-// fetch arbitrary owner-tenant objects such as raw knowledge uploads.
+// This prevents a read-only preview route from exposing arbitrary tenant
+// objects such as original knowledge uploads.
 func ValidateKBScopedStoragePath(filePath string, tenantID uint64) error {
 	if err := ValidateStoragePathTenant(filePath, tenantID); err != nil {
 		return err

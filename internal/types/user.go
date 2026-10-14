@@ -226,8 +226,8 @@ type RegisterRequest struct {
 
 	// TenantProvisioning is server-controlled registration context. It is
 	// deliberately excluded from JSON so a public caller cannot choose its
-	// own tenancy semantics. Empty preserves the historical behaviour and is
-	// treated as create_personal by UserService.Register.
+	// own tenancy semantics. Registration always provisions only the identity;
+	// legacy create_personal values cannot restore personal workspaces.
 	TenantProvisioning TenantProvisioningMode `json:"-"`
 }
 

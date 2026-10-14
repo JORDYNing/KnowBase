@@ -95,8 +95,6 @@ func (s *knowledgeBaseService) HybridSearchWithRerank(ctx context.Context,
 	if tenantInfo, ok := types.TenantInfoFromContext(ctx); ok && tenantInfo != nil {
 		rc = tenantInfo.RetrievalConfig
 	}
-	// Rerank models belong to the caller. A shared KB request executes in
-	// the owner's tenant, so resolve models back in the caller's.
 	modelCtx := ctx
 	if caller := types.CallerFromContext(ctx); caller.TenantID != 0 {
 		modelCtx = types.WithExecutionTenant(ctx, caller.TenantID)

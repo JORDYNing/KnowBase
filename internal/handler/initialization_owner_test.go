@@ -129,20 +129,20 @@ func TestUpdateKBConfigFromAnotherWorkspace(t *testing.T) {
 	backend := "backend-of-owner"
 	cases := []struct {
 		name       string
-		permission types.OrgMemberRole
+		permission types.KBPermission
 		body       string
 		wantStatus int
 	}{
 		{
-			name: "share editor", permission: types.OrgRoleEditor,
+			name: "share editor", permission: types.KBPermissionWrite,
 			body: `{"llmModelId":"m-llm"}`, wantStatus: http.StatusForbidden,
 		},
 		{
-			name: "share admin rebinding storage", permission: types.OrgRoleAdmin,
+			name: "share admin rebinding storage", permission: types.KBPermissionAdmin,
 			body: `{"llmModelId":"m-llm","storageBackendId":"backend-of-receiver"}`, wantStatus: http.StatusForbidden,
 		},
 		{
-			name: "share admin keeping storage", permission: types.OrgRoleAdmin,
+			name: "share admin keeping storage", permission: types.KBPermissionAdmin,
 			body:       `{"llmModelId":"m-llm","storageBackendId":"backend-of-owner","storageProvider":"minio"}`,
 			wantStatus: http.StatusOK,
 		},

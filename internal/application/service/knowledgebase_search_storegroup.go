@@ -20,28 +20,12 @@ import (
 // this bounds the total rather than the individual attempt.
 const storeResolveBudget = 12 * time.Second
 
-// storeGroup is one fan-out unit of HybridSearch: a set of KB IDs that share
-// the same (VectorStore, owning tenant) pair.
-//
-// Partition key is (VectorStoreID, OwnerTenantID), not VectorStoreID alone,
-// because Organization-shared KBs (kb.TenantID != requestTenantID) need
-// their own group whose ownership lookup runs against kb.TenantID — the
-// store is owned by the source tenant, not the caller.
-//
-// BaseParams are immutable across iterations and goroutines. TopK is the
-// only mutable per-iteration value; paramsWithTopK builds a fresh
-// []RetrieveParams per call so no goroutine sees a slice being mutated by
-// another. Callers MUST NOT mutate BaseParams after resolveStoreGroups
-// returns; doing so would race with the fan-out goroutines.
 type storeGroup struct {
 	// StoreID is the bound VectorStore UUID, or "" for the env-store group
 	// (KBs with VectorStoreID = NULL). Never echo this in user-facing
 	// errors; use secutils.SanitizeForLog when emitting in structured logs.
 	StoreID string
 
-	// OwnerTenantID is the tenant that owns the KBs and the store for this
-	// group. For Organization-shared KBs this differs from the request's
-	// tenant; the factory's StoreOwnedBy must be called with this value.
 	OwnerTenantID uint64
 
 	// KBIDs are the knowledge base IDs in this group. The caller MUST have
@@ -204,7 +188,7 @@ func (s *knowledgeBaseService) authorizeKBAccess(
 	ctx context.Context,
 	kbs []*types.KnowledgeBase,
 ) error {
-	return access.AuthorizeKBAccess(ctx, s.kbShareService, kbs)
+	return access.AuthorizeKBAccess(ctx, kbs)
 }
 
 // validateSameEmbeddingModel rejects multi-KB searches that span more than

@@ -38,8 +38,8 @@ func TestSharedDocumentReadsPropagateStorageFailure(t *testing.T) {
 		repo := &failingSharedKnowledgeRepo{err: failure}
 		svc := &knowledgeService{repo: repo}
 		search := &knowledgeBaseService{kgRepo: repo}
-		rows, err := svc.GetKnowledgeBatchWithSharedAccess(newSharedAccessContext(), 1, []string{"own", "shared"})
-		found, searchErr := search.fetchKnowledgeDataWithShared(newSharedAccessContext(), 1, []string{"own", "shared"})
+		rows, err := svc.GetAuthorizedKnowledgeBatch(newSharedAccessContext(), 1, []string{"own", "shared"})
+		found, searchErr := search.fetchAuthorizedKnowledgeData(newSharedAccessContext(), 1, []string{"own", "shared"})
 		if errors.Is(failure, repository.ErrKnowledgeNotFound) {
 			require.NoError(t, err)
 			require.NoError(t, searchErr)

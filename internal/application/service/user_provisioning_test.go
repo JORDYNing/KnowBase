@@ -44,7 +44,7 @@ func (s *provisioningTenantService) CreateTenant(context.Context, *types.Tenant)
 }
 
 func (s *provisioningTenantService) GetTenantByID(_ context.Context, id uint64) (*types.Tenant, error) {
-	return &types.Tenant{ID: id}, nil
+	return &types.Tenant{ID: id, Status: "active"}, nil
 }
 
 type provisioningMemberService struct {

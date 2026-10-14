@@ -32,7 +32,6 @@ export async function listKnowledgeBaseActivity(
 // 知识库管理 API（列表、创建、获取、更新、删除、复制）
 export function listKnowledgeBases(params?: {
   agent_id?: string;
-  agent_source_tenant_id?: string;
   /**
    * Optional creator filter. Server-side semantics:
    *   - "mine"   → only KBs whose creator_id matches the caller
@@ -45,7 +44,6 @@ export function listKnowledgeBases(params?: {
 }) {
   const query = new URLSearchParams();
   if (params?.agent_id) query.set('agent_id', params.agent_id);
-  if (params?.agent_source_tenant_id) query.set('agent_source_tenant_id', params.agent_source_tenant_id);
   if (params?.creator && params.creator !== 'all') query.set('creator', params.creator);
   const qs = query.toString();
   return get(qs ? `/api/v1/knowledge-bases?${qs}` : '/api/v1/knowledge-bases');
@@ -63,11 +61,6 @@ export function listKnowledgeBases(params?: {
 //                       reports the underlying engine (e.g. "postgres").
 //   - source 'user'   → KB is bound to a tenant-owned VectorStore.
 //                       vector_store_id / name / engine_type are real.
-//   - source 'shared' → KB belongs to a different tenant and is
-//                       readable via cross-organization sharing. The
-//                       server strips vector_store_id and engine_type
-//                       to avoid leaking the owner tenant's store
-//                       inventory; only this source marker arrives.
 //   - status 'unavailable' → the binding cannot be reached right now
 //                       (deleted row, registry miss, transient infra
 //                       failure). Operators recover via the global
@@ -226,7 +219,7 @@ export interface ImageProcessingConfig {
   image_vector_enabled?: boolean;
 }
 
-export type VectorStoreSource = 'env' | 'user' | 'shared' | 'unavailable';
+export type VectorStoreSource = 'env' | 'user' | 'unavailable';
 export type VectorStoreStatus = 'available' | 'unavailable';
 
 export interface KnowledgeBaseStoreView {
@@ -286,10 +279,9 @@ export function createKnowledgeBase(data: {
   return post(`/api/v1/knowledge-bases`, data);
 }
 
-export function getKnowledgeBaseById(id: string, options?: { agent_id?: string; agent_source_tenant_id?: string }) {
+export function getKnowledgeBaseById(id: string, options?: { agent_id?: string }) {
   const query = new URLSearchParams();
   if (options?.agent_id) query.set('agent_id', options.agent_id);
-  if (options?.agent_source_tenant_id) query.set('agent_source_tenant_id', options.agent_source_tenant_id);
   const qs = query.toString();
   return get(qs ? `/api/v1/knowledge-bases/${id}?${qs}` : `/api/v1/knowledge-bases/${id}`);
 }
@@ -527,10 +519,9 @@ export function renameKnowledgeFolder(kbId: string, from: string, to: string) {
   return put(`/api/v1/knowledge-bases/${kbId}/knowledge/folders`, { from, to });
 }
 
-export function getKnowledgeDetails(id: string, options?: { agent_id?: string; agent_source_tenant_id?: string }) {
+export function getKnowledgeDetails(id: string, options?: { agent_id?: string }) {
   const query = new URLSearchParams();
   if (options?.agent_id) query.set('agent_id', options.agent_id);
-  if (options?.agent_source_tenant_id) query.set('agent_source_tenant_id', options.agent_source_tenant_id);
   const qs = query.toString();
   return get(qs ? `/api/v1/knowledge/${id}?${qs}` : `/api/v1/knowledge/${id}`);
 }
@@ -582,11 +573,10 @@ export function previewKnowledgeFile(id: string) {
 }
 
 /** @param idsQueryString - query string with ids (e.g. ids=xxx&ids=yyy) */
-export function batchQueryKnowledge(idsQueryString: string, kbId?: string, agentId?: string, agentSourceTenantId?: string) {
+export function batchQueryKnowledge(idsQueryString: string, kbId?: string, agentId?: string) {
   let qs = idsQueryString;
   if (kbId) qs += `&kb_id=${encodeURIComponent(kbId)}`;
   if (agentId) qs += `&agent_id=${encodeURIComponent(agentId)}`;
-  if (agentSourceTenantId) qs += `&agent_source_tenant_id=${encodeURIComponent(agentSourceTenantId)}`;
   return get(`/api/v1/knowledge/batch?${qs}`);
 }
 
@@ -813,7 +803,7 @@ export function searchKnowledge(
   offset = 0,
   limit = 20,
   fileTypes?: string[],
-  options?: { agent_id?: string; agent_source_tenant_id?: string; recent?: boolean }
+  options?: { agent_id?: string; recent?: boolean }
 ) {
   const query = new URLSearchParams();
   if (keyword) {
@@ -825,7 +815,6 @@ export function searchKnowledge(
     query.set('file_types', fileTypes.join(','));
   }
   if (options?.agent_id) query.set('agent_id', options.agent_id);
-  if (options?.agent_source_tenant_id) query.set('agent_source_tenant_id', options.agent_source_tenant_id);
   if (options?.recent) query.set('recent', 'true');
   return get(`/api/v1/knowledge/search?${query.toString()}`);
 }

@@ -210,53 +210,25 @@ type TenantConfig struct {
 	DefaultSessionDescription string `yaml:"default_session_description" json:"default_session_description"`
 	// EnableCrossTenantAccess enables cross-tenant access for users with permission
 	EnableCrossTenantAccess bool `yaml:"enable_cross_tenant_access" json:"enable_cross_tenant_access"`
-	// EnableRBAC turns on tenant-level role enforcement (issue #1303).
-	// Pointer so we can distinguish "unset" from "explicit false":
-	//   nil           — fall back to the built-in default (true) applied
-	//                   by applyAuthAndTenantDefaults.
-	//   pointer false — operators opted into the logging-only rollout
-	//                   window (set via config.yaml `enable_rbac: false`
-	//                   or env `WEKNORA_TENANT_ENABLE_RBAC=false`).
-	//   pointer true  — enforcement on (the new default).
-	// Read through IsRBACEnforced so callers stay nil-safe.
+	// EnableRBAC is retained for configuration compatibility. Role enforcement
+	// is always enabled; legacy false values cannot turn it off.
 	EnableRBAC *bool `yaml:"enable_rbac" json:"enable_rbac"`
-	// MaxOwnedPerUser caps how many tenants a single non-superuser can
-	// create (and Own) via self-service POST /tenants. Counts only Owner
-	// memberships so being invited as Admin/Editor/Viewer in another
-	// tenant doesn't burn quota. Cross-tenant superusers
-	// (CanAccessAllTenants) are exempt.
-	//   > 0 — enforce the cap (handler returns 429 when reached).
-	//   = 0 — fall back to defaultMaxOwnedTenantsPerUser in the handler.
-	//   < 0 — disable the cap entirely (not recommended in shared deployments).
-	//
-	// Env override: WEKNORA_TENANT_MAX_OWNED_PER_USER (integer). When set
-	// and parseable it always wins over config.yaml so operators can
-	// loosen / tighten the quota without a redeploy. See
-	// applyAuthAndTenantDefaults for the semantics of <0 / 0 / >0.
+	// MaxOwnedPerUser is a legacy self-service quota and is no longer used.
+	// Ordinary accounts cannot create tenants regardless of this value.
 	MaxOwnedPerUser int `yaml:"max_owned_per_user" json:"max_owned_per_user" mapstructure:"max_owned_per_user"`
-	// SelfServiceCreationEnabled controls whether ordinary authenticated
-	// users may create a workspace for themselves. Nil preserves the
-	// historical default (enabled); cross-tenant superusers are exempt.
+	// SelfServiceCreationEnabled is retained for configuration compatibility.
+	// Ordinary workspace creation is disabled regardless of this legacy value.
 	SelfServiceCreationEnabled *bool `yaml:"self_service_creation_enabled" json:"self_service_creation_enabled" mapstructure:"self_service_creation_enabled"`
 }
 
-// IsRBACEnforced reports whether tenant-level role enforcement is
-// active. Nil receiver or nil EnableRBAC pointer means "operator did
-// not opt out", which after applyAuthAndTenantDefaults is the new
-// default (true). Callers that need to treat a nil *Config as
-// fail-open (legacy behaviour) should keep their own `cfg != nil`
-// short-circuit before invoking this helper.
+// IsRBACEnforced is always true for the collaborative team deployment.
 func (t *TenantConfig) IsRBACEnforced() bool {
-	if t == nil || t.EnableRBAC == nil {
-		return true
-	}
-	return *t.EnableRBAC
+	return true
 }
 
-// IsSelfServiceCreationEnabled reports whether ordinary users may create
-// tenants. Nil keeps the historical behaviour enabled.
+// IsSelfServiceCreationEnabled is always false for human accounts.
 func (t *TenantConfig) IsSelfServiceCreationEnabled() bool {
-	return t == nil || t.SelfServiceCreationEnabled == nil || *t.SelfServiceCreationEnabled
+	return false
 }
 
 // AuditConfig governs durable audit log behaviour. Writes happen on
@@ -275,19 +247,10 @@ type AuditConfig struct {
 
 // AuthConfig governs the user authentication entry points.
 type AuthConfig struct {
-	// RegistrationMode controls public and invitation password registration.
-	//   "self_serve" (default) — anyone may register; a new tenant is
-	//                            auto-created and the registrant becomes
-	//                            its Owner. Preserves existing behaviour.
-	//   "invite_register"      — new users need a valid invitation link.
-	//   "invite_only"          — no password registration; invitations can
-	//                            only be accepted by existing accounts.
-	//                            Kept as the legacy disabled mode.
+	// RegistrationMode is retained for compatibility and fixed to invite_only.
+	// Human authentication and account provisioning use Feishu exclusively.
 	RegistrationMode string `yaml:"registration_mode" json:"registration_mode"`
-	// DefaultTenantMode controls public password-registration provisioning.
-	// create_personal preserves the historical one-user-one-workspace default;
-	// tenantless creates only the identity and waits for an invitation or an
-	// explicit self-service tenant creation.
+	// DefaultTenantMode is fixed to tenantless; membership follows approval.
 	DefaultTenantMode      string `yaml:"default_tenant_mode" json:"default_tenant_mode"`
 	ComplexPasswordEnabled bool   `yaml:"complex_password_enabled" json:"complex_password_enabled"`
 }
@@ -945,6 +908,17 @@ func applyAgentEnvOverrides(cfg *Config) {
 // (frontend hides the register entry) stay consistent — without needing
 // two parallel env vars.
 func applyAuthAndTenantDefaults(cfg *Config) {
+	defer func() {
+		cfg.Auth.RegistrationMode = AuthRegistrationModeInviteOnly
+		cfg.Auth.DefaultTenantMode = AuthDefaultTenantModeTenantless
+		on, off := true, false
+		cfg.Tenant.EnableRBAC = &on
+		cfg.Tenant.SelfServiceCreationEnabled = &off
+		if cfg.OIDCAuth != nil {
+			cfg.OIDCAuth.Enable = false
+		}
+	}()
+
 	if cfg.Auth == nil {
 		cfg.Auth = &AuthConfig{}
 	}

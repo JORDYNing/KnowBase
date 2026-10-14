@@ -2,7 +2,7 @@
 
 知识库用于组织相关资料，并统一配置分块、向量模型、检索索引、Wiki 和知识图谱。文件、网页、手写 Markdown 和 FAQ 等内容作为知识条目管理，入库后按配置解析和建立索引。
 
-不同知识库可以使用独立的处理配置。提问时可限定检索范围，成员访问与组织共享也按知识库授权。
+不同知识库可以使用独立的处理配置。提问时可限定检索范围，成员访问按空间角色、资源创建者和 API Key 范围授权。
 
 <Screenshot
   src="/screenshots/kb-document-list.png"
@@ -88,9 +88,9 @@
 
 ## 查看活动与用量
 
-知识库设置的「活动」记录配置、文档、分块、共享和 Wiki 变更。该入口面向符合资源管理权限的登录用户，API Key 不可访问。通过 API Key 发起的操作会在操作人下方额外显示 Key 名称。
+知识库设置的「活动」记录配置、文档、分块和 Wiki 变更。该入口面向符合资源管理权限的登录用户，API Key 不可访问。通过 API Key 发起的操作会在操作人下方额外显示 Key 名称。
 
-通过组织共享以只读（Viewer）权限访问的知识库，界面不显示上传、编辑、删除和设置入口。
+空间内只读成员（Viewer）可阅读知识库，界面不显示上传、编辑、删除和设置入口。
 
 存储配额按工作空间计算，涵盖文件、文本、向量和索引。创建知识库与上传前会检查配额，删除内容后回收对应用量。
 
@@ -252,7 +252,7 @@ OCR 会在入库前拒绝空响应、只有分隔符的内容，以及占据输�
 
 #### KB 计算字段 {#_1-7-kb-计算字段}
 
-列表 / 详情响应附带：`knowledge_count`（不含删除中的文档，与文档列表一致）、`chunk_count`、`is_processing`（FAQ 库）、`processing_count`（文档库处理中知识数）、`share_count`（共享到的组织数）、`creator_name`、`is_pinned` / `pinned_at`（当前用户置顶状态）。
+列表 / 详情响应附带：`knowledge_count`（不含删除中的文档，与文档列表一致）、`chunk_count`、`is_processing`（FAQ 库）、`processing_count`（文档库处理中知识数）、`creator_name`、`is_pinned` / `pinned_at`（当前用户置顶状态）。
 
 另有一个存储字段 `is_temporary`：标记**临时（ephemeral）知识库**，正常的知识库列表里不展示。它由系统内部使用，典型场景是联网搜索把抓回来的网页缓存成可检索内容。手工建库不会产生临时库。
 
@@ -464,7 +464,7 @@ type KnowledgeTagRelation struct { KnowledgeID, TagID string } // 多对多
 
 测试用例明确验证：HTML 文件即使内容是 `<script>alert(1)</script>`，也只会作为二进制附件传输。下载端点（`/knowledge/:id/download` 与批量下载 `/knowledge-bases/:id/knowledge/batch-download`）要求更高的 Contributor+ 且走 KBAccessWrite 门禁。
 
-预览返回的是原始文件本身，通过只读共享（组织共享的 viewer、经共享智能体可见）访问时同样可以预览。「只有 Editor 及以上才能下载」是产品上的便利性限制，不是访问控制边界：能读到一个 KB 的人，就能拿到其中的原文件。
+预览返回原始文件本身，当前空间中具备 KB 读权限的 Viewer 也可预览。下载入口要求 Contributor 及 KB 写权限，但预览本身已允许读取原始字节；调用者仍须通过当前空间、KB 和文件绑定检查。
 
 ### 知识库复制与知识移动 {#_4-知识库复制与知识移动}
 
@@ -515,7 +515,7 @@ nil & nil               → true   (同为 env-store)
 
 ### KB 路由与权限 {#_2-kb-路由与权限}
 
-（门禁语义见《租户、用户与认证授权》篇；`KBAccessRead/Write` 会解析组织共享路径。）
+（门禁语义见[团队空间与飞书认证](01-tenant-auth.md)；`KBAccessRead/Write` 只解析当前授权空间的知识库。）
 
 | 方法 | 路径 | Handler | 门禁 |
 | --- | --- | --- | --- |
@@ -539,7 +539,7 @@ nil & nil               → true   (同为 env-store)
 
 ### 混合检索（Hybrid Search） {#_8-混合检索-hybrid-search}
 
-`POST /knowledge-bases/:id/hybrid-search`（`internal/handler/knowledgebase.go` + `internal/application/service/knowledgebase_search*.go`）按 KB 的 `IndexingStrategy` 组合召回：向量（vector_enabled）+ 关键词 BM25（keyword_enabled），经 rank fusion 融合与重排（rerank），可叠加知识图谱增强（graph_enabled）；多 KB 场景由 `knowledgebase_search_fanout.go` 并发扇出、`knowledgebase_search_fusion.go` 融合；共享 KB 检索路径见 `knowledgebase_search_shared.go`。FAQ 库检索有专门的命中策略（负例过滤 / 迭代召回），见 FAQ 篇。
+`POST /knowledge-bases/:id/hybrid-search`（`internal/handler/knowledgebase.go` + `internal/application/service/knowledgebase_search*.go`）按 KB 的 `IndexingStrategy` 组合召回：向量（vector_enabled）+ 关键词 BM25（keyword_enabled），经 rank fusion 融合与重排（rerank），可叠加知识图谱增强（graph_enabled）；多 KB 场景由 `knowledgebase_search_fanout.go` 并发扇出、`knowledgebase_search_fusion.go` 融合；多库检索的通用校验见 `knowledgebase_search_shared.go`（文件名为历史命名，不提供跨空间共享）。FAQ 库检索有专门的命中策略（负例过滤 / 迭代召回），见 FAQ 篇。
 
 ### 知识处理管线 {#_5-知识处理管线}
 

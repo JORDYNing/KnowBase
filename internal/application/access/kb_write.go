@@ -6,9 +6,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
-// RequireKBWrite consumes an explicit operation grant. Tenant ownership and
-// role checks belong to the entry point that resolved the grant; an execution
-// tenant alone, or a shared-agent/read grant, never authorizes a mutation.
 func RequireKBWrite(ctx context.Context, kb *types.KnowledgeBase) error {
 	if kb == nil || kb.ID == "" || kb.TenantID == 0 {
 		return ErrNotFound
@@ -17,7 +14,7 @@ func RequireKBWrite(ctx context.Context, kb *types.KnowledgeBase) error {
 		!scope.HasCapability(types.APIKeyCapabilityIngest) {
 		return ErrForbidden
 	}
-	if !HasKBGrant(ctx, kb.ID, kb.TenantID, types.OrgRoleEditor) {
+	if !HasKBGrant(ctx, kb.ID, kb.TenantID, types.KBPermissionWrite) {
 		return ErrForbidden
 	}
 	return nil
@@ -37,7 +34,7 @@ func WithKBTaskWrite(ctx context.Context, kb *types.KnowledgeBase, expectedTenan
 		caller:     types.CallerFromContext(ctx),
 		kbID:       kb.ID,
 		tenantID:   expectedTenant,
-		permission: types.OrgRoleEditor,
+		permission: types.KBPermissionWrite,
 		task:       true,
 	}
 	// A worker gets exactly one scope, without inheriting another task's KBs.

@@ -60,10 +60,6 @@ func (a *PinnedSessionSandbox) manager(ctx context.Context, sessionID string) sa
 	if err != nil || pin.IsZero() {
 		return nil
 	}
-	// The workspace comes from the pin, not the request. Fork runs from a plain
-	// POST as the session owner, while a shared agent's sandbox lives on the
-	// lending workspace's config — reading it as the session owner found
-	// nothing and silently degraded the fork to SNAPSHOT_UNSUPPORTED.
 	sessionTenantID, _ := types.TenantIDFromContext(ctx)
 	mgr, err := resolveTenantSandboxForConfig(
 		ctx, a.resolver, a.fallback, pin.TenantOr(sessionTenantID), pin.ConfigID, nil,

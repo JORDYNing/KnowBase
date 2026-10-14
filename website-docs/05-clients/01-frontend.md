@@ -1,6 +1,6 @@
 # Web 前端（frontend/）
 
-Gamelib 的 Web 前端是一个基于 **Vue 3 + TypeScript + Vite** 的单页应用（SPA），承载知识库管理、Agent 对话、组织协作、系统设置等全部交互界面。同一份代码同时服务三种形态：
+Gamelib 的 Web 前端是一个基于 **Vue 3 + TypeScript + Vite** 的单页应用（SPA），承载知识库管理、Agent 对话、团队成员管理、系统设置等全部交互界面。同一份代码同时服务三种形态：
 
 1. **标准 Web 部署**：Vite 构建产物由 nginx 容器托管，`/api` 反向代理到后端；
 2. **网页嵌入（Embed）**：独立的轻量入口 `frontend/embed.html` + `frontend/src/embed-main.ts`，供第三方网站以 iframe / 浮窗方式嵌入智能体对话；
@@ -44,12 +44,12 @@ flowchart TB
 
     subgraph app["应用层"]
         ROUTER["路由 (src/router/index.ts)<br/>导航守卫: 登录 / 租户 / SystemAdmin"]
-        VIEWS["视图层 (src/views)<br/>knowledge / chat / agent / settings / organization / embed ..."]
+        VIEWS["视图层 (src/views)<br/>knowledge / chat / agent / settings / embed ..."]
         COMP["通用组件 (src/components)"]
     end
 
     subgraph state["状态与逻辑层"]
-        STORES["Pinia stores (src/stores)<br/>auth / settings / organization ..."]
+        STORES["Pinia stores (src/stores)<br/>auth / settings ..."]
         COMPOSABLES["composables (src/composables)<br/>useTheme / useFont / useChatStreamHandler ..."]
         HOOKS["hooks (src/hooks)"]
         UTILS["utils (src/utils)<br/>request.ts / markdown 渲染 / 安全消毒"]
@@ -104,10 +104,9 @@ flowchart TB
 | 路径 | 名称 | 组件 | 功能 |
 | --- | --- | --- | --- |
 | `/` | — | 重定向 | 重定向到 `/platform/knowledge-bases` |
-| `/login` | `login` | `src/views/auth/Login.vue` | 登录页（含 OIDC、语言切换、动画背景） |
-| `/register` | `registerByInvite` | `src/views/auth/Login.vue` | 邀请注册落地页——复用 Login 组件，挂载时检测 `?token=xxx` 切换到邀请注册模式 |
-| `/onboarding/workspace` | `workspaceOnboarding` | `src/views/auth/WorkspaceOnboarding.vue` | 无租户用户的工作空间引导页（创建或等待被邀请），需要登录但不要求已有租户 |
-| `/join` | `joinOrganization` | 重定向 | 加入组织邀请链接，把 `?code=` 转成 `invite_code` 参数并跳到 `/platform/organizations` |
+| `/login` | `login` | `src/views/auth/Login.vue` | 飞书登录页（语言切换、动画背景） |
+| `/register` | — | 重定向 | 兼容旧书签，跳转到 `/login`；不提供注册表单 |
+| `/onboarding/workspace` | `workspaceOnboarding` | `src/views/auth/WorkspaceOnboarding.vue` | 无空间用户的申请状态页，显示加入 10000 的待审批、拒绝或异常状态；需登录但不要求已有空间 |
 | `/knowledgeBase` | `home` | `src/views/knowledge/KnowledgeBase.vue` | 知识库详情（历史遗留顶层路径） |
 | `/platform` | `Platform` | `src/views/platform/index.vue` | 平台主布局（左侧菜单 + 路由出口 + 全局设置模态 + 拖拽上传遮罩），默认重定向到知识库列表 |
 | `/platform/dev/markdown` | `markdownTest` | `src/views/dev/MarkdownTestPage.vue` | 仅开发模式（`import.meta.env.DEV`）注册的 Markdown 渲染视觉回归测试页 |
@@ -116,7 +115,7 @@ flowchart TB
 
 | 路径 | 名称 | 组件 | 功能 |
 | --- | --- | --- | --- |
-| `/platform/knowledge-bases` | `knowledgeBaseList` | `src/views/knowledge/KnowledgeBaseList.vue` | 知识库列表：空间侧栏（全部/我的/按组织/收藏/最近）、卡片列表、创建入口；支持按更新时间 / 创建时间 / 名称排序（`components/ResourceSortControl.vue`，智能体列表同样适用） |
+| `/platform/knowledge-bases` | `knowledgeBaseList` | `src/views/knowledge/KnowledgeBaseList.vue` | 知识库列表：空间侧栏（全部/我的/收藏/最近）、卡片列表、创建入口；支持按更新时间 / 创建时间 / 名称排序（`components/ResourceSortControl.vue`，智能体列表同样适用） |
 | `/platform/knowledge-bases/:kbId` | `knowledgeBaseDetail` | `src/views/knowledge/KnowledgeBase.vue` | 知识库详情：文档列表（可按更新时间 / 创建时间 / 文件名排序，排序在服务端完成，默认创建时间倒序）、上传、解析状态、会话入口、Wiki 等 |
 | `/platform/agents` | `agentList` | `src/views/agent/AgentList.vue` | 智能体（Agent）列表与管理，编辑走 `AgentEditorModal.vue`；需部署能力 `agents` |
 | `/platform/toolbox/:section?` | `toolbox` | `src/views/toolbox/Toolbox.vue` | 工具箱：`skills`（技能）、`mcp`（MCP 服务）、`browserconnection`（浏览器连接）三个标签页，见下方「工具箱」 |
@@ -124,7 +123,6 @@ flowchart TB
 | `/platform/creatChat` | `globalCreatChat` | `src/views/creatChat/creatChat.vue` | 新建对话页：推荐问题、选择知识库/Agent/模型后发起会话 |
 | `/platform/knowledge-bases/:kbId/creatChat` | `kbCreatChat` | `src/views/creatChat/creatChat.vue` | 从某个知识库上下文发起新对话（同一组件） |
 | `/platform/chat/:chatid` | `chat` | `src/views/chat/index.vue` | 会话页：消息流（SSE 流式渲染、骨架屏、虚拟滚动）、引用面板、附件预览 |
-| `/platform/organizations` | `organizationList` | `src/views/organization/OrganizationList.vue` | 组织列表：创建/加入组织、成员与共享资源管理（配合 `OrganizationSettingsModal.vue`）；需部署能力 `organizations`，Lite 版始终隐藏。添加成员时按完整空间 ID 精确查找，不再按空间名模糊搜索 |
 | `/platform/settings` | `settings` | `src/views/settings/Settings.vue` | 设置中心（全屏模态形态），分区见下方「设置中心的分区与可见性」 |
 | `/platform/tenant` | — | 重定向 | 兼容旧路径 → `/platform/settings` |
 | `/platform/knowledge-search` | — | 重定向 | 旧全局搜索路径 → 知识库列表并通过 `?cmdk=` 打开全局命令面板（⌘K） |
@@ -158,7 +156,11 @@ flowchart TB
 
 - **空间角色门槛**：`frontend/src/config/settingsAccess.ts` 的 `SETTINGS_SECTION_MIN_ROLE` 给每个分区规定最低角色。`general` / `models` / `system` / `userprofile` / `tenant` / `members` / `mymemory` / `envvars` 是 `viewer` 起（只读可见），`ollama`、`weknoracloud`、`websearch`、`chathistory`、`memory`、`vectorstore`、`parser`、`storage`、`sandbox` 要求 `admin`；发布集成中的 `integration-api` 要求 `owner`（`INTEGRATION_TAB_MIN_ROLE`）。另有 `SETTINGS_MANAGEMENT_SHORTCUT_MIN_ROLE`：头像菜单里那些标着「管理」的快捷入口门槛更高（成员管理要 `owner`，模型管理要 `admin`），避免把只读页面伪装成管理入口。
 - **部署能力**：`frontend/src/config/deploymentCapabilities.ts` 的 `SETTINGS_SECTION_CAPABILITY` / `INTEGRATION_TAB_CAPABILITY` 把分区映射到 `GET /api/v1/system/capabilities` 返回的能力键（如 `settings.sandbox`、`integrations.mcpserver`），能力明确为 `supported: false` 时隐藏入口，见下方「设置导航与部署能力」。
-- **系统管理员白名单**：`SYSTEM_ADMIN_SETTINGS_SECTIONS`（`system-global`、`runtime-queues`、`platform-api-keys`、`system-audit-log`）只对系统管理员显示，与空间角色无关，详见[租户、用户与认证授权](../03-features/01-tenant-auth.md)的「系统管理员与平台控制台」。
+- **系统管理员白名单**：`SYSTEM_ADMIN_SETTINGS_SECTIONS`（`system-global`、`runtime-queues`、`platform-api-keys`、`system-audit-log`）只对系统管理员显示，与空间角色无关，详见[平台管理与系统管理员](../03-features/20-platform-admin.md)。
+
+成员页通过 `views/settings/TenantJoinRequests.vue` 提供加入申请列表与审批弹窗。Owner 可以授予 Viewer、Contributor 或 Admin，Admin 只能授予 Viewer 或 Contributor；批准弹窗不预选角色。重申和审核都提交版本号，冲突后刷新当前状态。
+
+普通用户没有创建空间入口。具备 `CanAccessAllTenants` 的平台超管通过 `components/PlatformWorkspaceManager.vue` 保留空间选择、搜索与创建入口；只有 `IsSystemAdmin` 身份不会获得这些能力。
 
 ### 工具箱
 
@@ -187,7 +189,7 @@ flowchart TB
 | 处理 | `parser`、`multimodal`、`asr`、`chunking` | 解析引擎与首行表头、图片理解、语音转写、分块参数 |
 | 数据 | `vectorStore`、`storage`、`faq` | `faq` 仅 FAQ 类型库；`vectorStore` 绑定后不可改 |
 | 集成 | `datasource` | **仅编辑模式**，飞书 / Lark（知识库与云盘）、Notion、Confluence、语雀、钉钉文档、腾讯 IMA、RSS / Atom、GitLab 等同步配在这里，不在全局设置里（连接器定义见 `views/knowledge/settings/DataSourceEditorDialog.vue`） |
-| 管理 | `graph`、`advanced`、`share`、`activity` | 知识图谱、高级项、共享到组织、活动流；后两个仅编辑模式 |
+| 管理 | `graph`、`advanced`、`activity` | 知识图谱、高级项、活动流；活动流仅编辑模式 |
 
 ### 全局命令面板（⌘K / Ctrl+K）
 
@@ -201,14 +203,12 @@ flowchart TB
 
 `router.beforeEach` 中实现了一条完整的鉴权链（`frontend/src/router/index.ts`）：
 
-1. **OIDC 回调放行**：URL hash 含 `oidc_result=` / `oidc_error=` 时直接放行，交由 `App.vue` 消费；
+1. **飞书回调**：`App.vue` 消费服务端回调结果，并与会话恢复共用认证状态更新逻辑；
 2. **工具箱旧书签**：`/platform/settings?section=skills|mcp|browserconnection` 重定向到 `/platform/toolbox/<section>`；
-3. **Lite / 桌面端深链恢复**：Lite 模式硬刷新落在默认首页时，从 `sessionStorage` 恢复上次访问的 `/platform` 子路径（不恢复到组织页）；
-4. **会话恢复**：未登录时先用 `localStorage` 中的 `weknora_token` 调 `getCurrentUser()` 恢复会话（同时刷新 memberships，避免角色变更滞后）；
-5. **桌面端自动登录**：恢复失败则尝试一次 `autoSetup()`。自 v0.8.2 起它只在原生桌面端生效：先经 Wails 绑定 `GetAutoSetupToken()` 取得本进程的随机凭据，再以 `X-WeKnora-Desktop-Token` 请求头调用 `POST /api/v1/auth/auto-setup`；浏览器中打开的 Lite 版没有该绑定，直接走普通注册 / 登录。失败会在 `localStorage` 打标避免重复尝试；
-6. **租户门槛**：已登录但无有效租户 → 跳 `/onboarding/workspace`；
-7. **部署能力门槛**：路由 `meta.requiredCapability`（如 `agents`、`organizations`、`settings.sandbox`）不被当前部署支持时，提示后跳回知识库列表；能力探测失败时放行，由后端接口兜底；
-8. **SystemAdmin 门槛**：`requiresSystemAdmin` 路由对非系统管理员跳回知识库列表（仅 UI 层拦截，服务端另有强校验）。
+3. **桌面端深链恢复**：硬刷新落在默认首页时，恢复上次访问的有效 `/platform` 子路径；
+4. **会话恢复与登录校验**：使用持久化 token 调 `getCurrentUser()` 恢复会话和成员角色。无有效会话时跳飞书登录页，桌面端也不自动开户或登录；
+5. **空间门槛**：认证成功后才允许进入 `/onboarding/workspace`。没有有效空间的用户统一进入申请页，不加载空间资源；待审批页前台可见时每 30 秒查询，获批后切换到 10000 并刷新凭据；
+6. **部署能力与系统管理员门槛**：不支持的 `requiredCapability` 或无 `requiresSystemAdmin` 权限时跳回可访问页面，服务端继续执行强制鉴权。
 
 ## 状态管理（Pinia）
 
@@ -220,8 +220,6 @@ flowchart TB
 | `stores/chatResources.ts` | `useChatResourcesStore` | 空间级资源缓存（TTL 60s）：知识库、Agent、模型、Web 搜索 provider 列表，供聊天/新建对话选择器复用 |
 | `stores/editorResources.ts` | `useEditorResourcesStore` | 编辑器/设置相关资源缓存（TTL 60s）：存储引擎配置与状态、Prompt 模板、解析引擎、系统信息、MCP 服务、Skill、Agent 类型预设、检索配置 |
 | `stores/commandPalette.ts` | `useCommandPaletteStore` | 全局命令面板（⌘K / Ctrl+K）开关与查询；最近搜索按 (user, tenant) 作用域存储避免跨账号泄漏 |
-| `stores/organization.ts` | `useOrganizationStore` | 组织协作：组织列表、成员、共享知识库/Agent、加入申请与审核、角色升级等全套动作 |
-| `stores/organizationState.ts` | 纯函数模块 | 组织列表 upsert / merge、加入审核对成员数影响等纯逻辑（配套单测 `organizationState.test.ts`） |
 | `stores/settings.ts` | 设置 store | 会话与 Agent 配置：选中的知识库/文件/标签/MCP/Skill/工具、模型配置、Ollama 配置、Web 搜索开关等 |
 | `stores/settingsStorage.ts` | 纯函数模块 | 设置持久化（`Gamelib_settings` key）的读取、克隆与内建 Agent 模式修复（配套 `settingsStorage.test.mjs`） |
 | `stores/menu.ts` | `useMenuStore` | 左侧导航菜单结构（新建对话、知识库、Agent 等条目）与 i18n 标题 |
@@ -240,8 +238,8 @@ flowchart TB
 ### 请求基座
 
 - **axios 实例**：`frontend/src/utils/request.ts` 创建统一实例（`baseURL` 来自 `frontend/src/utils/api-base.ts` 的 `getApiBaseUrl()`，尊重 Vite `BASE_URL` 以支持子路径反代部署；普通请求超时 30s）。文件上传（`postUpload`）按载荷大小计算超时（`utils/requestTimeouts.ts` 的 `uploadTimeoutMs`，下限 5 分钟，按约 10MB/分钟放大），调大 `MAX_FILE_SIZE_MB` 后大文件不会被 30s 默认值中断；调用方显式传入的 `timeout` 优先。
-- **请求拦截器**：自动附加 `Authorization: Bearer <weknora_token>`（Embed 渠道的 `Embed ` token 不被覆盖）、`Accept-Language`（当前 i18n 语言）、`X-Request-ID`（随机串）、`X-Tenant-ID`（跨空间访问，始终携带激活空间 id 以避免切空间后 header 丢失）。
-- **响应拦截器**：2xx 解包返回 `data`；401 触发单飞（single-flight）refresh token 刷新，失败队列重放；公开端点（`/auth/login`、`/auth/register`、`/auth/oidc/`、`/auth/auto-setup`、`/auth/invitations/lookup`、`/api/v1/embed/`，即 `PUBLIC_AUTH_PATHS`）的 401 直接抛给页面而不跳登录；Embed 页面永不重定向到 `/login`。
+- **请求拦截器**：自动附加 `Authorization: Bearer <weknora_token>`（Embed 渠道的 `Embed ` token 不被覆盖）、`Accept-Language`（当前 i18n 语言）、`X-Request-ID`（随机串）、`X-Tenant-ID`（携带激活空间 ID，服务端仍检查有效成员资格或显式平台超管权限）。
+- **响应拦截器**：2xx 解包返回 `data`；401 触发单飞（single-flight）refresh token 刷新，失败队列重放；`PUBLIC_AUTH_PATHS` 中的免认证端点和历史关闭端点出现 401 时直接抛给页面而不跳登录；Embed 页面永不重定向到 `/login`。
 - **HTTP 状态码（`$httpStatus`）**：`get` / `post` / `put` / `patch` / `del` / `postUpload` 的返回类型为 `WithStatus<T>`，JSON 对象或数组响应上挂有不可枚举的 `$httpStatus` 属性，可用来区分成功形状相同的结果（例如系统管理员创建用户：201 表示新建，200 表示幂等重试）。它不出现在对象展开、`JSON.stringify` 与 `Object.keys` 中；Blob、字符串与 SSE 响应不带该属性。
 - **SSE 流式**：`frontend/src/api/chat/streame.ts` 基于 `@microsoft/fetch-event-source` 封装 `useStream()`，支持流式输出、加载态、错误态与请求调试元数据；上层由 `frontend/src/composables/useChatStreamHandler.ts` 组织为聊天消息流。聊天流握手返回 401 时，会与 axios 共用 `utils/authRefresh.ts` 的单飞刷新，拿到新 token 后原样重放一次请求，因此 access token 过期不会打断正在发起的对话。
 
@@ -249,9 +247,8 @@ flowchart TB
 
 | 模块 | 职责 |
 | --- | --- |
-| `api/auth/` | 登录、注册、OIDC、`autoSetup`（仅原生桌面端，携带 Wails 提供的 `X-WeKnora-Desktop-Token`）、`getCurrentUser` 会话恢复 |
-| `api/tenant/`（`index` / `members` / `invitations` / `audit-log`） | 租户（工作空间）信息、成员管理、邀请、审计日志 |
-| `api/organization/` | 组织 CRUD、成员、共享知识库/Agent、加入申请 |
+| `api/auth/` | 飞书登录配置、`getCurrentUser` 会话恢复、刷新与退出 |
+| `api/tenant/`（`index` / `members` / `join-requests` / `audit-log`） | 租户信息、成员管理、加入申请查询与审批、审计日志 |
 | `api/knowledge-base/` | 知识库 CRUD 与文件/知识条目管理 |
 | `api/chat/`（`index` / `streame` / `steer` / `temporary-attachments`) | 会话 CRUD、标题生成、SSE 流式问答、向运行中的智能体轮次追加消息（`steer`）、临时附件 |
 | `api/artifacts.ts` | 产物库列表与删除（`/api/v1/artifacts`） |
@@ -370,13 +367,13 @@ RAG 流水线的可视化进度（`views/chat/components/RagPipelineProgress.vue
 
 `frontend/src/wailsjs/` 是 Wails 框架自动生成的绑定代码（文件头标注 "automatically generated. DO NOT EDIT"）：
 
-- `wailsjs/go/main/App.d.ts` / `App.js`：Go 侧 `App` 结构体方法的 JS 绑定，包括 `CheckForUpdates` / `AutoCheckForUpdates`（桌面更新检查）、`GetAPIBaseURL` / `GetAPILanBaseURL`、桌面内置 HTTP 服务的端口与对外监听设置（`GetDesktopHTTPPortSetting`、`SetDesktopHTTPBindPublicSetting` 等），以及 `GetAutoSetupToken`（返回桌面进程启动时生成的随机凭据，前端据此调用 `auto-setup` 免登录，见上文导航守卫）；
+- `wailsjs/go/main/App.d.ts` / `App.js`：Go 侧 `App` 结构体方法的 JS 绑定，包括 `CheckForUpdates` / `AutoCheckForUpdates`（桌面更新检查）、`GetAPIBaseURL` / `GetAPILanBaseURL`、桌面内置 HTTP 服务的端口与对外监听设置（`GetDesktopHTTPPortSetting`、`SetDesktopHTTPBindPublicSetting` 等），以及历史 `GetAutoSetupToken` 绑定（当前前端不调用；服务端已关闭 `auto-setup`）；
 - `wailsjs/runtime/`：Wails runtime API（窗口控制等），前端在浏览器环境下调用会被 try/catch 安静降级（如 `useTheme.ts`）。
 
-桌面应用的窗口内容就是这份前端代码，桌面端自动登录、深链恢复与 `--wails-draggable` 标记的可拖拽标题区都是为桌面形态准备的适配。
+桌面应用的窗口内容就是这份前端代码，桌面端深链恢复与 `--wails-draggable` 标记的可拖拽标题区都是为桌面形态准备的适配。
 
 ## 设置导航与部署能力
 
 设置入口按任务分组，发布集成中包含 IM、网页嵌入、API、MCP Server、CLI、Chrome 插件、Claw Skill 等接入页；沙箱配置、个人变量与空间 / 个人记忆在设置中心各有管理界面；技能、MCP 服务与浏览器连接在工具箱。新增入口应复用 `frontend/src/config/integrations.ts`、`frontend/src/config/toolbox.ts`、`frontend/src/config/settingsAccess.ts` 等现有注册信息，并同时检查侧栏分组。
 
-`GET /api/v1/system/capabilities` 返回 edition 及能力 supported/reason。前端据实际部署能力隐藏或禁用入口（路由守卫、左侧菜单、设置分区、工具箱标签页都读同一份快照）：能力探测失败或旧版后端缺少某个键时默认保持可见；`organizations` 在 Lite 版始终隐藏；`settings.sandbox.docker` / `settings.sandbox.host` 只有后端明确返回 `supported: true` 才显示。前端可见性只改善操作体验，后端路由继续执行角色与能力检查。接口见[系统 API](../04-api/02-api-system.md)。
+`GET /api/v1/system/capabilities` 返回 edition 及能力 supported/reason。前端据实际部署能力隐藏或禁用入口（路由守卫、左侧菜单、设置分区、工具箱标签页都读同一份快照）：能力探测失败或旧版后端缺少某个键时默认保持可见；`settings.sandbox.docker` / `settings.sandbox.host` 只有后端明确返回 `supported: true` 才显示。前端可见性只改善操作体验，后端路由继续执行角色与能力检查。接口见[系统 API](../04-api/02-api-system.md)。

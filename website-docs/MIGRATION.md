@@ -32,7 +32,7 @@
 | `添加新的网络搜索引擎.md` | [联网搜索](03-features/11-web-search.md)、[扩展点](06-development/03-extension-points.md) |
 | `数据源导入开发文档.md` | [数据源同步](03-features/10-datasource.md)、[扩展点](06-development/03-extension-points.md)；云盘实操另补新页 |
 | `IM集成开发文档.md` | [IM 集成](03-features/12-im-integration.md)、[扩展点](06-development/03-extension-points.md)；旧平台后台截图/批量权限清单不直接复用 |
-| `OIDC认证调用流程.md`、`RBAC说明.md`、`共享空间说明.md` | [认证与授权](03-features/01-tenant-auth.md)、[认证 API](04-api/02-api-auth.md)、[组织 API](04-api/02-api-org.md) |
+| `OIDC认证调用流程.md`、`RBAC说明.md`、`共享空间说明.md` | [团队空间与飞书认证](03-features/01-tenant-auth.md)、[认证 API](04-api/02-api-auth.md)（旧组织共享功能已移除） |
 | `BUILTIN_MODELS.md` | [模型管理](03-features/06-models.md)、[平台管理](03-features/20-platform-admin.md) |
 | `BUILTIN_MCP_SERVICES.md`、`MCP功能使用说明.md`、`zh/mcp-approval.md` | [MCP 集成](03-features/08-mcp.md) |
 | `Langfuse集成.md`、`日志配置.md` | [可观测性](03-features/16-observability.md)、[配置参考](01-getting-started/04-configuration.md) |

@@ -36,7 +36,9 @@ var (
 
 	// ErrUserEmailExists is returned by Register when the target entity's
 	// email already exists.
-	ErrUserEmailExists = errors.New("user with this email already exists")
+	ErrUserEmailExists          = errors.New("user with this email already exists")
+	ErrAlternativeLoginDisabled = errors.New("only Feishu login is available")
+	ErrAccountInactive          = errors.New("account is disabled")
 
 	// ErrUserUsernameExists is returned by Register when the target entity's
 	// username already exists.
@@ -98,12 +100,13 @@ func getJwtSecret() string {
 
 // userService implements the UserService interface
 type userService struct {
-	userRepo         interfaces.UserRepository
-	tokenRepo        interfaces.AuthTokenRepository
-	tenantService    interfaces.TenantService
-	memberService    interfaces.TenantMemberService
-	config           *config.Config
-	systemSettingSvc interfaces.SystemSettingService
+	userRepo           interfaces.UserRepository
+	tokenRepo          interfaces.AuthTokenRepository
+	tenantService      interfaces.TenantService
+	memberService      interfaces.TenantMemberService
+	config             *config.Config
+	systemSettingSvc   interfaces.SystemSettingService
+	joinRequestService interfaces.TenantJoinRequestService
 }
 
 // NewUserService creates a new user service instance
@@ -114,14 +117,16 @@ func NewUserService(
 	tenantService interfaces.TenantService,
 	memberService interfaces.TenantMemberService,
 	systemSettingSvc interfaces.SystemSettingService,
+	joinRequestService interfaces.TenantJoinRequestService,
 ) interfaces.UserService {
 	return &userService{
-		userRepo:         userRepo,
-		tokenRepo:        tokenRepo,
-		tenantService:    tenantService,
-		memberService:    memberService,
-		config:           configInfo,
-		systemSettingSvc: systemSettingSvc,
+		userRepo:           userRepo,
+		tokenRepo:          tokenRepo,
+		tenantService:      tenantService,
+		memberService:      memberService,
+		config:             configInfo,
+		systemSettingSvc:   systemSettingSvc,
+		joinRequestService: joinRequestService,
 	}
 }
 
@@ -131,180 +136,40 @@ func (s *userService) complexPasswordEnabled(ctx context.Context) bool {
 
 // Register creates a new user account
 func (s *userService) Register(ctx context.Context, req *types.RegisterRequest) (*types.User, error) {
-	logger.Info(ctx, "Start user registration")
-
-	// Validate input
 	if req.Username == "" || req.Email == "" || req.Password == "" {
 		return nil, errors.New("username, email and password are required")
 	}
-
-	// Check if user already exists
-	existingUser, _ := s.userRepo.GetUserByEmail(ctx, req.Email)
-	if existingUser != nil {
+	existing, err := s.userRepo.GetUserByEmail(ctx, req.Email)
+	if err != nil && !isUserLookupNotFound(err) {
+		return nil, err
+	}
+	if existing != nil {
 		return nil, ErrUserEmailExists
 	}
-
-	existingUser, _ = s.userRepo.GetUserByUsername(ctx, req.Username)
-	if existingUser != nil {
+	existing, err = s.userRepo.GetUserByUsername(ctx, req.Username)
+	if err != nil && !isUserLookupNotFound(err) {
+		return nil, err
+	}
+	if existing != nil {
 		return nil, ErrUserUsernameExists
 	}
-
-	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		logger.Errorf(ctx, "Failed to hash password: %v", err)
-		return nil, errors.New("failed to process password")
+		return nil, err
 	}
-
-	provisioning := req.TenantProvisioning
-	if provisioning == "" {
-		provisioning = types.TenantProvisioningCreatePersonal
+	// Account creation never owns a personal workspace, including calls from
+	// legacy provisioning and administrator code that still pass create_personal.
+	user := &types.User{ID: uuid.NewString(), Username: req.Username, Email: req.Email,
+		PasswordHash: string(hashed), IsActive: true, TenantID: 0, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	if err := s.userRepo.CreateUser(ctx, user); err != nil {
+		return nil, err
 	}
-	if !provisioning.IsValid() {
-		return nil, fmt.Errorf("invalid tenant provisioning mode %q", provisioning)
-	}
-
-	var createdTenant *types.Tenant
-	if provisioning == types.TenantProvisioningCreatePersonal {
-		// Note: RetrieverEngines is left empty - system will use defaults
-		// from RETRIEVE_DRIVER env.
-		tenant := &types.Tenant{
-			Name:        fmt.Sprintf("%s's Workspace", secutils.SanitizeForLog(req.Username)),
-			Description: "Default workspace",
-			Status:      "active",
-		}
-
-		createdTenant, err = s.tenantService.CreateTenant(ctx, tenant)
-		if err != nil {
-			logger.Errorf(ctx, "Failed to create workspace")
-			return nil, errors.New("failed to create workspace")
-		}
-	}
-
-	// Create user
-	user := &types.User{
-		ID:           uuid.New().String(),
-		Username:     req.Username,
-		Email:        req.Email,
-		PasswordHash: string(hashedPassword),
-		TenantID:     0,
-		IsActive:     true,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-	}
-	if createdTenant != nil {
-		user.TenantID = createdTenant.ID
-	}
-
-	err = s.userRepo.CreateUser(ctx, user)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to create user: %v", err)
-		if createdTenant != nil {
-			if rollbackErr := s.tenantService.DeleteTenant(ctx, createdTenant.ID); rollbackErr != nil {
-				logger.Errorf(ctx, "Failed to roll back tenant %d after user creation failure: %v", createdTenant.ID, rollbackErr)
-			}
-		}
-		return nil, errors.New("failed to create user")
-	}
-
-	// Bootstrap an Owner membership so the registrant has full control over
-	// the tenant their account just created. Failure here only logs — the
-	// user record exists and the auth middleware's orphan-tenant recovery
-	// path will recreate the membership on next login.
-	if createdTenant != nil && s.memberService != nil {
-		if _, err := s.memberService.EnsureOwner(ctx, user.ID, createdTenant.ID); err != nil {
-			logger.Errorf(ctx, "Failed to create owner membership for user %s tenant %d: %v",
-				user.ID, createdTenant.ID, err)
-			_ = s.userRepo.DeleteUser(ctx, user.ID)
-			_ = s.tenantService.DeleteTenant(ctx, createdTenant.ID)
-			return nil, errors.New("failed to finalise workspace ownership")
-		}
-	}
-
-	logger.Info(ctx, "User registered successfully")
 	return user, nil
 }
 
 // Login authenticates a user and returns tokens
 func (s *userService) Login(ctx context.Context, req *types.LoginRequest) (*types.LoginResponse, error) {
-	logger.Info(ctx, "Start user login")
-	// Get user by email
-	user, err := s.userRepo.GetUserByEmail(ctx, req.Email)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to get user by email: %v", err)
-		return &types.LoginResponse{
-			Success: false,
-			Message: "Invalid email or password",
-		}, nil
-	}
-	if user == nil {
-		logger.Warn(ctx, "User not found for email")
-		return &types.LoginResponse{
-			Success: false,
-			Message: "Invalid email or password",
-		}, nil
-	}
-
-	// Check if user is active
-	if !user.IsActive {
-		logger.Warn(ctx, "User account is disabled")
-		return &types.LoginResponse{
-			Success: false,
-			Message: "Account is disabled",
-		}, nil
-	}
-
-	// Verify password
-	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password))
-	if err != nil {
-		logger.Warn(ctx, "Password verification failed")
-		return &types.LoginResponse{
-			Success: false,
-			Message: "Invalid email or password",
-		}, nil
-	}
-	logger.Info(ctx, "Password verification successful")
-
-	// Generate tokens. Resolve the target tenant once so the JWT claim
-	// and the tenant we return below agree — otherwise an honoured
-	// "last active tenant" preference would mint a token for tenant N
-	// but tell the client they're in their home tenant.
-	logger.Info(ctx, "Generating tokens")
-	resolvedTenantID := s.resolveLoginTenantID(ctx, user)
-	accessToken, refreshToken, err := s.generateTokensForTenant(ctx, user, resolvedTenantID)
-	if err != nil {
-		logger.Errorf(ctx, "Failed to generate tokens: %v", err)
-		return &types.LoginResponse{
-			Success: false,
-			Message: "Login failed",
-		}, nil
-	}
-	logger.Info(ctx, "Tokens generated successfully")
-
-	// Get tenant information. A zero resolved ID is a valid tenantless
-	// identity, not a failed tenant lookup.
-	var tenant *types.Tenant
-	if resolvedTenantID > 0 {
-		tenant, err = s.tenantService.GetTenantByID(ctx, resolvedTenantID)
-		if err != nil {
-			logger.Warn(ctx, "Failed to get tenant info")
-		} else {
-			logger.Info(ctx, "Tenant information retrieved successfully")
-		}
-	}
-
-	memberships := s.buildMembershipsForUser(ctx, user, tenant)
-
-	logger.Info(ctx, "User logged in successfully")
-	return &types.LoginResponse{
-		Success:      true,
-		Message:      "Login successful",
-		User:         user,
-		ActiveTenant: tenant,
-		Memberships:  memberships,
-		Token:        accessToken,
-		RefreshToken: refreshToken,
-	}, nil
+	return nil, ErrAlternativeLoginDisabled
 }
 
 // buildMembershipsForUser returns the user's tenant memberships projected
@@ -434,48 +299,7 @@ func synthFallbackMembership(user *types.User, activeTenant *types.Tenant) []typ
 
 // GetOIDCAuthorizationURL builds the OIDC authorization URL.
 func (s *userService) GetOIDCAuthorizationURL(ctx context.Context, redirectURI string) (*types.OIDCAuthURLResponse, error) {
-	cfg, err := s.getOIDCConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(redirectURI) == "" {
-		return nil, errors.New("redirect_uri is required")
-	}
-
-	nonce, err := generateRandomString(24)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate state: %w", err)
-	}
-
-	state, err := secutils.SignOIDCState(&secutils.OIDCStatePayload{
-		Nonce:       nonce,
-		RedirectURI: strings.TrimSpace(redirectURI),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode OIDC state: %w", err)
-	}
-
-	query := url.Values{}
-	query.Set("response_type", "code")
-	query.Set("client_id", cfg.ClientID)
-	query.Set("redirect_uri", redirectURI)
-	query.Set("scope", strings.Join(cfg.Scopes, " "))
-	query.Set("state", state)
-
-	authURL := cfg.AuthorizationEndpoint
-	if strings.Contains(authURL, "?") {
-		authURL += "&" + query.Encode()
-	} else {
-		authURL += "?" + query.Encode()
-	}
-
-	return &types.OIDCAuthURLResponse{
-		Success:             true,
-		ProviderDisplayName: cfg.ProviderDisplayName,
-		AuthorizationURL:    authURL,
-		State:               state,
-		Nonce:               nonce,
-	}, nil
+	return nil, ErrAlternativeLoginDisabled
 }
 
 // LoginWithOIDC exchanges code for tokens, loads user info, provisions user if
@@ -487,79 +311,7 @@ func (s *userService) LoginWithOIDC(
 	code, redirectURI string,
 	provisioning types.TenantProvisioningMode,
 ) (*types.OIDCCallbackResponse, error) {
-	if strings.TrimSpace(code) == "" {
-		return nil, errors.New("code is required")
-	}
-	if strings.TrimSpace(redirectURI) == "" {
-		return nil, errors.New("redirect_uri is required")
-	}
-
-	cfg, err := s.getOIDCConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	tokenResp, err := s.exchangeOIDCCode(ctx, cfg, code, redirectURI)
-	if err != nil {
-		return nil, err
-	}
-
-	userInfo, err := s.resolveOIDCUserInfo(ctx, cfg, tokenResp)
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(userInfo.Email) == "" {
-		return nil, errors.New("OIDC provider did not return email")
-	}
-
-	user, err := s.userRepo.GetUserByEmail(ctx, userInfo.Email)
-	if err != nil && !isUserLookupNotFound(err) {
-		return nil, fmt.Errorf("failed to query user by email: %w", err)
-	}
-	isNewUser := false
-	if isUserLookupNotFound(err) || user == nil {
-		user, err = s.provisionOIDCUser(ctx, userInfo, provisioning)
-		if err != nil {
-			return nil, err
-		}
-		isNewUser = true
-	}
-
-	if !user.IsActive {
-		return &types.OIDCCallbackResponse{Success: false, Message: "Account is disabled"}, nil
-	}
-
-	// Resolve target tenant once so the JWT claim and the tenant we
-	// return below stay in sync; see Login for the rationale.
-	resolvedTenantID := s.resolveLoginTenantID(ctx, user)
-	accessToken, refreshToken, err := s.generateTokensForTenant(ctx, user, resolvedTenantID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate local tokens: %w", err)
-	}
-
-	// 拉取 tenant + memberships，让 OIDC 登录的返回结构与本地登录一致，
-	// 前端无须为 OIDC 单独走一次 /auth/me 才能拿到角色。
-	var tenant *types.Tenant
-	if resolvedTenantID > 0 {
-		if t, terr := s.tenantService.GetTenantByID(ctx, resolvedTenantID); terr == nil {
-			tenant = t
-		} else {
-			logger.Warnf(ctx, "OIDC login: failed to load tenant %d for user %s: %v",
-				resolvedTenantID, user.ID, terr)
-		}
-	}
-	memberships := s.buildMembershipsForUser(ctx, user, tenant)
-
-	return &types.OIDCCallbackResponse{
-		Success:      true,
-		Message:      "登录成功",
-		User:         user,
-		Tenant:       tenant,
-		Memberships:  memberships,
-		Token:        accessToken,
-		RefreshToken: refreshToken,
-		IsNewUser:    isNewUser,
-	}, nil
+	return nil, ErrAlternativeLoginDisabled
 }
 
 // GetUserByID gets a user by ID
@@ -1190,6 +942,9 @@ func (s *userService) SwitchTenant(
 	if err != nil {
 		return nil, fmt.Errorf("load target workspace: %w", err)
 	}
+	if tenant == nil || !strings.EqualFold(strings.TrimSpace(tenant.Status), "active") {
+		return nil, types.ErrJoinTargetUnavailable
+	}
 
 	// Persist before minting tokens so a 200 response is also a
 	// durable landing-preference update. RefreshToken re-reads this
@@ -1298,6 +1053,9 @@ func (s *userService) ValidateToken(ctx context.Context, tokenString string) (*t
 	user, err := s.userRepo.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, 0, err
+	}
+	if user == nil || !user.IsActive {
+		return nil, 0, ErrAccountInactive
 	}
 
 	// Extract active tenant from the JWT. Anything missing or unparseable
@@ -1455,6 +1213,9 @@ func (s *userService) RefreshToken(
 	user, err := s.userRepo.GetUserByID(ctx, userID)
 	if err != nil {
 		return "", "", err
+	}
+	if user == nil || !user.IsActive {
+		return "", "", ErrAccountInactive
 	}
 
 	// Revoke old refresh token

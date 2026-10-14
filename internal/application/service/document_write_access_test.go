@@ -263,7 +263,7 @@ func newDocumentWriteFixture(t *testing.T) *documentWriteFixture {
 		KnowledgeBase:     kbs.values["kb"],
 		Caller:            types.CallerFromContext(ctx),
 		EffectiveTenantID: 7,
-		Permission:        types.OrgRoleEditor,
+		Permission:        types.KBPermissionWrite,
 	}
 	ctx = grant.Context(ctx)
 	ctx = context.WithValue(ctx, types.TenantInfoContextKey, &types.Tenant{ID: 7})
@@ -307,10 +307,7 @@ func TestDocumentAndChunkWritesRequireOperationGrant(t *testing.T) {
 		ctx,
 		access.KBRequest{Caller: types.CallerFromContext(ctx)},
 		f.kbs.values["kb"],
-		types.OrgRoleViewer,
-		nil,
-		nil,
-	)
+		types.KBPermissionRead)
 	require.NoError(t, err)
 	ctx = grant.Context(ctx)
 	row, _ := f.chunkRepo.GetChunkByID(f.ctx, 7, "chunk")
@@ -602,7 +599,7 @@ func TestMultiKBDeleteRequiresAndAcceptsEveryKBGrant(t *testing.T) {
 		KnowledgeBase:     f.kbs.values["other"],
 		Caller:            types.CallerFromContext(f.ctx),
 		EffectiveTenantID: 7,
-		Permission:        types.OrgRoleEditor,
+		Permission:        types.KBPermissionWrite,
 	}
 	require.NoError(t, f.svc.DeleteKnowledgeList(grant.Context(f.ctx), []string{"doc", "other-doc"}))
 	rows, err := f.repo.GetKnowledgeBatch(f.ctx, 7, []string{"doc", "other-doc"})

@@ -73,11 +73,11 @@ func TestBuildRetryArgv_ScalarsAndSlices(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := cmdutil.BuildRetryArgv(cmd, []string{"weknora", "agent", "update", "ag_abc"},
+	got := cmdutil.BuildRetryArgv(cmd, []string{"gamelib", "agent", "update", "ag_abc"},
 		"name", "add-kb", "format")
 	// Visit order is lexicographical among changed flags.
 	want := []string{
-		"weknora", "agent", "update", "ag_abc",
+		"gamelib", "agent", "update", "ag_abc",
 		"--add-kb", "kb_new",
 		"--add-kb", "kb_old",
 		"--format", "json",
@@ -103,8 +103,8 @@ func TestBuildRetryArgv_SkipsFlagsNotInAllow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := cmdutil.BuildRetryArgv(cmd, []string{"weknora", "model", "update", "m1"}, "name", "format")
-	want := []string{"weknora", "model", "update", "m1", "--name", "x", "-y"}
+	got := cmdutil.BuildRetryArgv(cmd, []string{"gamelib", "model", "update", "m1"}, "name", "format")
+	want := []string{"gamelib", "model", "update", "m1", "--name", "x", "-y"}
 	if len(got) != len(want) {
 		t.Fatalf("len got=%d want=%d\ngot=%v\nwant=%v", len(got), len(want), got, want)
 	}

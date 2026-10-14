@@ -26,6 +26,9 @@ func (s *sessionService) AgentQA(
 	req *types.QARequest,
 	eventBus *event.EventBus,
 ) error {
+	if err := validateQAWorkspace(ctx, req); err != nil {
+		return err
+	}
 	sessionID := req.Session.ID
 	// Propagate the session ID so stateful sandbox backends (CubeSandbox) can
 	// bind script execution to a per-session MicroVM instance.
@@ -36,7 +39,6 @@ func (s *sessionService) AgentQA(
 		return fmt.Errorf("failed to marshal session: %w", err)
 	}
 
-	// customAgent is required for AgentQA (handler has already done permission check for shared agent)
 	if req.CustomAgent == nil {
 		logger.Warnf(ctx, "Custom agent not provided for session: %s", sessionID)
 		return errors.New("custom agent configuration is required for agent QA")
@@ -51,7 +53,6 @@ func (s *sessionService) AgentQA(
 	if v := ctx.Value(types.TenantInfoContextKey); v != nil {
 		tenantInfo, _ = v.(*types.Tenant)
 	}
-	// When agent belongs to another tenant (shared agent), use agent's tenant for KB/model scope; load tenantInfo if needed
 	if tenantInfo == nil || tenantInfo.ID != agentTenantID {
 		if s.tenantService != nil {
 			if agentTenant, err := s.tenantService.GetTenantByID(ctx, agentTenantID); err == nil && agentTenant != nil {
@@ -342,7 +343,6 @@ func (s *sessionService) buildAgentConfig(
 		LLMCallTimeout:              customAgent.Config.LLMCallTimeout,
 		MaxCompletionTokens:         customAgent.Config.MaxCompletionTokens,
 		RetainRetrievalHistory:      customAgent.Config.RetainRetrievalHistory,
-		SharedAgentReadOnly:         req.SharedAgentReadOnly,
 		// The model is always told it may call tools in parallel; without
 		// this the engine still ran them one by one, so three searches in
 		// one reply cost three sequential embed/retrieve/rerank rounds.
@@ -355,9 +355,6 @@ func (s *sessionService) buildAgentConfig(
 	// agent UI both present it as none. A shared run must not hand receivers
 	// every MCP service (with the owner's credentials) that its owner believes
 	// is off.
-	if req.SharedAgentReadOnly && agentConfig.MCPSelectionMode == "" {
-		agentConfig.MCPSelectionMode = "none"
-	}
 
 	// Falls back to global configuration if no specific timeout is set for the agent.
 	if agentConfig.LLMCallTimeout == 0 && s.cfg.Agent != nil && s.cfg.Agent.LLMCallTimeout > 0 {
@@ -411,9 +408,8 @@ func (s *sessionService) buildAgentConfig(
 	// Apply per-turn @Skill / @MCP scope. Each helper narrows the agent's
 	// whitelist to the mentioned items and records the pinned set used for the
 	// <must_use> hint, keeping all scope logic in one place per resource type.
-	isSharedAgent := req.SharedAgentReadOnly
 	applyPerRequestSkillScope(ctx, agentConfig, customAgent.Config.SkillsSelectionMode, req.SkillNames)
-	applyPerRequestMCPScope(ctx, agentConfig, customAgent.Config.MCPServices, isSharedAgent, req.MCPServiceIDs)
+	applyPerRequestMCPScope(ctx, agentConfig, customAgent.Config.MCPServices, req.MCPServiceIDs)
 
 	// Use custom agent's system prompt if specified
 	if systemPrompt, _ := s.cfg.ResolveCustomAgentPrompts(customAgent); systemPrompt != "" {
@@ -453,15 +449,14 @@ func (s *sessionService) buildAgentConfig(
 		logger.Infof(ctx, "No knowledge bases specified for agent, running in pure agent mode")
 	}
 
-	// Build search targets using agent's tenant (handler has validated access for shared agent)
 	searchTargets, err := s.buildSearchTargets(ctx, agentTenantID, agentConfig.KnowledgeBases, agentConfig.KnowledgeIDs, req.TagScopes)
 	if err != nil {
 		return nil, fmt.Errorf("build search targets: %w", err)
 	}
 	agentConfig.SearchTargets = searchTargets
-	if !req.SharedAgentReadOnly {
+	{
 		roleEnforced := s.cfg != nil && s.cfg.Tenant.IsRBACEnforced()
-		agentConfig.WritableKBIDs = kbWritableIDs(ctx, s.kbShareService, searchTargets, roleEnforced)
+		agentConfig.WritableKBIDs = kbWritableIDs(ctx, searchTargets, roleEnforced)
 	}
 	agentConfig.QuestionOrigin = questionOriginInTargets(ctx, req.QuestionOrigin, searchTargets)
 	// Document tags are stored in knowledge_tag_relations, so document-KB tag
@@ -548,7 +543,6 @@ func applyPerRequestMCPScope(
 	ctx context.Context,
 	agentConfig *types.AgentConfig,
 	agentPresetMCPs []string,
-	isSharedAgent bool,
 	requested []string,
 ) {
 	if len(requested) == 0 {
@@ -560,11 +554,11 @@ func applyPerRequestMCPScope(
 	}
 	mentioned := dedupPreservingOrder(requested)
 	effective, _ := resolvePerRequestMCPScope(
-		mentioned, agentPresetMCPs, agentConfig.MCPSelectionMode, isSharedAgent,
+		mentioned, agentPresetMCPs, agentConfig.MCPSelectionMode,
 	)
 	if len(effective) == 0 {
-		logger.Warnf(ctx, "Ignoring @MCP scope outside agent preset: requested=%v agent=%v shared=%v",
-			requested, agentPresetMCPs, isSharedAgent)
+		logger.Warnf(ctx, "Ignoring @MCP scope outside agent preset: requested=%v agent=%v",
+			requested, agentPresetMCPs)
 		return
 	}
 	agentConfig.PinnedMCPServiceIDs = effective
@@ -572,23 +566,14 @@ func applyPerRequestMCPScope(
 		requested, agentConfig.MCPSelectionMode, effective)
 }
 
-// resolvePerRequestMCPScope selects authorized mentions for per-turn priority.
-// It does not modify the registration scope. Shared agents may only pin services
-// in the agent preset, and selectionMode "none" rejects all mentions.
 func resolvePerRequestMCPScope(
 	mentioned, agentMCPs []string,
 	selectionMode string,
-	isSharedAgent bool,
 ) (effective []string, mode string) {
 	if len(mentioned) == 0 {
 		return nil, selectionMode
 	}
-	if isSharedAgent {
-		mentioned = intersectPreservingRequestOrder(mentioned, agentMCPs)
-		if len(mentioned) == 0 {
-			return nil, selectionMode
-		}
-	}
+
 	switch selectionMode {
 	case "none":
 		return nil, selectionMode

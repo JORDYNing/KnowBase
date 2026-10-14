@@ -1,14 +1,14 @@
-# Makefile for the WeKnora CLI (cli/ Go module).
+# Makefile for the Gamelib CLI (cli/ Go module).
 #
 # Usage:
-#   make build         compile to ./bin/weknora with version metadata
+#   make build         compile to ./bin/gamelib with version metadata
 #   make test          go test ./...
 #   make test-coverage same with coverage report
 #   make lint          go vet (golangci-lint planned)
 #   make tidy          go mod tidy
 #   make clean         remove ./bin
 
-BINARY      := weknora
+BINARY      := gamelib
 BUILD_DIR   := bin
 PKG         := github.com/Tencent/WeKnora/cli
 

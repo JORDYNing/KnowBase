@@ -154,7 +154,6 @@ type sessionService struct {
 	chunkService          interfaces.ChunkService                // Service for chunk operations
 	webSearchStateRepo    interfaces.WebSearchStateService       // Service for web search state
 	webSearchProviderRepo interfaces.WebSearchProviderRepository // Repository for web search provider entities
-	kbShareService        interfaces.KBShareService              // Service for KB sharing operations
 	suggestionRepo        interfaces.MessageSuggestionRepository
 	sandboxMgr            sandbox.Manager // Default sandbox backend; used to reclaim per-session MicroVMs on delete
 	sandboxResolver       sandbox.TenantSandboxResolver
@@ -189,7 +188,6 @@ func NewSessionService(cfg *config.Config,
 	agentService interfaces.AgentService,
 	webSearchStateRepo interfaces.WebSearchStateService,
 	webSearchProviderRepo interfaces.WebSearchProviderRepository,
-	kbShareService interfaces.KBShareService,
 	suggestionRepo interfaces.MessageSuggestionRepository,
 	sandboxMgr sandbox.Manager,
 	sandboxResolver sandbox.TenantSandboxResolver,
@@ -214,7 +212,6 @@ func NewSessionService(cfg *config.Config,
 		agentService:          agentService,
 		webSearchStateRepo:    webSearchStateRepo,
 		webSearchProviderRepo: webSearchProviderRepo,
-		kbShareService:        kbShareService,
 		suggestionRepo:        suggestionRepo,
 		sandboxMgr:            sandboxMgr,
 		sandboxResolver:       sandboxResolver,
@@ -748,20 +745,6 @@ func (s *sessionService) destroyBoundSandbox(ctx context.Context, sessionID stri
 		logger.Warnf(ctx, "Failed to read sandbox pin for session %s cleanup: %v", sessionID, err)
 		return
 	}
-	// An empty pin normally means there is nothing to destroy, but sessions
-	// whose sandbox predates the pin column also read as empty. Falling through
-	// to the default manager keeps those reachable: DestroySession is a cheap
-	// binding lookup that no-ops when the session truly has no sandbox, whereas
-	// skipping would abandon a paused instance that keeps billing.
-	//
-	// The workspace comes from the pin. This runs from a plain DELETE whose
-	// only tenant is the session's own, but a shared agent's sandbox was
-	// created on the LENDING workspace's config: resolving that here as the
-	// session owner finds nothing and abandons a paused MicroVM that keeps
-	// billing with nobody holding its id.
-	//
-	// Pass nil policy so the workspace kill switch cannot strand an already
-	// created sandbox: disabling script execution must still allow teardown.
 	mgr, err := resolveTenantSandboxForConfig(
 		ctx, s.sandboxResolver, s.sandboxMgr,
 		pin.TenantOr(sessionTenantID), pin.ConfigID, nil,
@@ -950,8 +933,6 @@ func (s *sessionService) GenerateTitleAsync(
 	modelID string,
 	eventBus *event.EventBus,
 ) {
-	// Use context tenant (effective tenant when using shared agent) so ListModels/GetChatModel find the agent's model.
-	// The session row itself is still updated by its persisted tenant/user owner scope.
 	tenantID := ctx.Value(types.TenantIDContextKey)
 	requestID := ctx.Value(types.RequestIDContextKey)
 	language := ctx.Value(types.LanguageContextKey)

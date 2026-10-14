@@ -41,11 +41,11 @@ func NewCmdStatus(f *cmdutil.Factory) *cobra.Command {
 
 Returns: reachable / model_id.
 
-For downstream KB reachability verification use 'weknora agent check <id>'
+For downstream KB reachability verification use 'gamelib agent check <id>'
 (active verification, 1 + N HTTP). For full agent config / metadata use
-'weknora agent view <id>'.`,
-		Example: `  weknora agent status ag_abc
-  weknora agent status ag_abc --format json`,
+'gamelib agent view <id>'.`,
+		Example: `  gamelib agent status ag_abc
+  gamelib agent status ag_abc --format json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			fopts, err := cmdutil.CheckFormatFlag(c)
@@ -68,7 +68,7 @@ For downstream KB reachability verification use 'weknora agent check <id>'
 	cmdutil.SetAgentHelp(cmd, cmdutil.AgentHelp{
 		UsedFor:       "shallow health probe of a custom agent: reachability without kb_scope verification",
 		RequiredFlags: []string{"<agent-id> (positional)"},
-		Examples:      []string{"weknora agent status agent_abc"},
+		Examples:      []string{"gamelib agent status agent_abc"},
 		Output:        "envelope.data is {id, reachable, ...}; use `agent check` for deep kb_scope verification",
 	})
 	return cmd

@@ -207,7 +207,7 @@ Prompt 组装将稳定说明放在前部，动态会话内容放在后部；支�
 | 路由 | 权限 | 说明 |
 | --- | --- | --- |
 | `GET /api/v1/tenants/:id/audit-log` | PathTenantMatch + Admin | 空间审计流；只返回 `scope_type=''` 的空间级行（`UnscopedOnly`） |
-| `GET /api/v1/knowledge-bases/:id/activity` | KB 创建者或空间 Admin，且必须是 owner 空间（组织共享消费方不可读） | `scope_type=knowledge_base` + `scope_id=kbID` 的 KB 活动投影 |
+| `GET /api/v1/knowledge-bases/:id/activity` | 当前空间的 KB 创建者或空间 Admin | `scope_type=knowledge_base` + `scope_id=kbID` 的 KB 活动投影 |
 | `GET /api/v1/system/admin/audit-log` | SystemAdmin（+ 平台 API Key `system.audit_read`） | `tenant_id=0` 的平台级事件（settings / promote / queue 操作等） |
 
 统一查询参数：`after_id`（游标，返回 id 更小的行）、`limit`（1–100，默认 50，硬上限 `auditLogListLimitMax=100`）、`action` / `outcome` / `actor` 精确过滤。响应含 `next_cursor`（页内最小 id，0 表示到底）。
@@ -228,7 +228,7 @@ Prompt 组装将稳定说明放在前部，动态会话内容放在后部；支�
 
 #### 公开认证端点 IP 限流（`internal/middleware/auth_public_ratelimit.go`） {#_5-2-公开认证端点-ip-限流-internal-middleware-auth-public-ratelimit-go}
 
-`PublicAuthRateLimit()` 保护未认证的邀请链接端点（`/auth/invitations/lookup`、`/auth/register-by-invite`）：进程内滑动窗口，每 IP **30 次/分钟**（跨两个端点共享桶），超限返回 429（`ErrTooManyRequests`）。纯本地实现（低流量端点），注释中明确水平扩展时应换用 `internal/ratelimit` 的 Redis 版。
+`PublicAuthRateLimit()` 保留在历史邀请链接端点上；公开邀请注册已关闭。限流本身用于保护未认证入口（`/auth/invitations/lookup`、`/auth/register-by-invite`）：进程内滑动窗口，每 IP **30 次/分钟**（跨两个端点共享桶），超限返回 429（`ErrTooManyRequests`）。纯本地实现（低流量端点），注释中明确水平扩展时应换用 `internal/ratelimit` 的 Redis 版。
 
 ### 模型引用统计（`internal/application/repository/model_usage.go`） {#_7-模型引用统计-internal-application-repository-model-usage-go}
 

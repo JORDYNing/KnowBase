@@ -45,11 +45,11 @@ type resolveResult struct {
 
 const resolveLong = `Resolve a pending tool approval raised during an agent run.
 
-When a server-side agent run (weknora session ask) needs to call a tool
+When a server-side agent run (gamelib session ask) needs to call a tool
 that requires approval, the stream emits a tool-approval event carrying a
 pending id and the run blocks. This command unblocks it: approve (default)
 lets the tool call execute, --reject cancels it. After resolving, resume
-the answer with weknora session resume.
+the answer with gamelib session resume.
 
 --modified-args replaces the tool call arguments on approve (JSON object).
 It conflicts with --reject (rejected calls never execute).
@@ -76,9 +76,9 @@ func newCmdResolve(f *cmdutil.Factory) *cobra.Command {
 		Use:   "resolve <pending-id>",
 		Short: "Approve or reject a pending tool call (high-risk write)",
 		Long:  resolveLong,
-		Example: `  weknora session tool-approval resolve pend_abc -y                  # approve
-  weknora session tool-approval resolve pend_abc --reject --reason "wrong target" -y
-  weknora session tool-approval resolve pend_abc -y --format json`,
+		Example: `  gamelib session tool-approval resolve pend_abc -y                  # approve
+  gamelib session tool-approval resolve pend_abc --reject --reason "wrong target" -y
+  gamelib session tool-approval resolve pend_abc -y --format json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			fopts, err := cmdutil.CheckFormatFlag(c)
@@ -125,8 +125,8 @@ func newCmdResolve(f *cmdutil.Factory) *cobra.Command {
 		UsedFor:       "approve or reject a pending tool call from an agent run; then resume with session resume",
 		RequiredFlags: []string{"<pending-id> (positional)"},
 		Examples: []string{
-			"weknora session tool-approval resolve pend_abc -y",
-			"weknora session tool-approval resolve pend_abc --reject -y",
+			"gamelib session tool-approval resolve pend_abc -y",
+			"gamelib session tool-approval resolve pend_abc --reject -y",
 		},
 		Output: "envelope.data is {pending_id, decision (approve|reject), resolved:true}",
 		Warnings: []string{
@@ -199,7 +199,7 @@ func runResolve(ctx context.Context, opts *ResolveOptions, fopts *cmdutil.Format
 		return err
 	}
 	decision := decisionOf(opts.Reject)
-	retryCmd := append([]string{"weknora", "session", "tool-approval", "resolve", opts.PendingID}, retryArgOf(opts.Reject)...)
+	retryCmd := append([]string{"gamelib", "session", "tool-approval", "resolve", opts.PendingID}, retryArgOf(opts.Reject)...)
 	retryCmd = append(retryCmd, "-y")
 	if err := cmdutil.ConfirmDestructive(p, opts.Yes, fopts.WantsJSON(), decision, "tool call", opts.PendingID, "session.tool_approval.resolve", retryCmd); err != nil {
 		return err

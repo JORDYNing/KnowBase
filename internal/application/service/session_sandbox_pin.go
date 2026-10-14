@@ -30,18 +30,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
-// SandboxPin addresses the backend a session's live sandbox runs on.
-//
-// ConfigID alone is not an address. tenant_sandbox_configs is keyed by
-// (tenant_id, id), so the same id resolves in exactly one workspace - and a
-// shared agent runs on ITS OWNER's config while the session belongs to the
-// borrower. Reading the workspace from the ambient request context instead is
-// what used to strand those MicroVMs: teardown, the terminal and desktop
-// panels and fork snapshots all run outside the chat turn, where the ambient
-// tenant is the borrower.
-//
-// Keeping the pair in one value is the point of the type: an API that can hand
-// out a bare config id is an API where the two can drift apart again.
 type SandboxPin struct {
 	// ConfigID is the sandbox config, or "" when the session has no live
 	// sandbox. types.SandboxConfigIDGlobalDefault means the deployment default.
@@ -193,10 +181,6 @@ func (p *SessionSandboxPinner) Clear(ctx context.Context, sessionID string) erro
 		}).Error
 }
 
-// recordOwner fills sandbox_config_tenant_id on a pin written before the
-// column existed (value 0). It must not overwrite a recorded owner: the pin
-// is sticky, and a later shared agent from a different workspace is not the
-// owner of this config.
 func (p *SessionSandboxPinner) recordOwner(
 	ctx context.Context, sessionID string, tenantID uint64,
 ) error {
@@ -210,15 +194,6 @@ func (p *SessionSandboxPinner) recordOwner(
 		Update("sandbox_config_tenant_id", tenantID).Error
 }
 
-// resolveSandboxForExecution resolves before pinning so non-remote workspace
-// backends never leave a permanent session pin. Remote backends
-// pin before their first Create; concurrent callers adopt and re-resolve the
-// winning config before executing anything.
-//
-// tenantID is the workspace that owns agentConfigID, which for a shared agent
-// is its owner rather than the session's. An existing pin carries its own
-// owner and is resolved under that; tenantID only fills in for pins written
-// before the owner was recorded.
 func resolveSandboxForExecution(
 	ctx context.Context,
 	resolver sandbox.TenantSandboxResolver,
@@ -246,20 +221,6 @@ func resolveSandboxForExecution(
 			mgr, err := resolveTenantSandboxForConfig(
 				ctx, resolver, fallback, owner, pinned.ConfigID, policy,
 			)
-			// Only persist an owner that actually resolved this config. Writing
-			// the caller's tenant on a failed lookup would stamp the wrong
-			// workspace onto a sticky pin left by a previous shared agent.
-			//
-			// A nil error is not that proof on its own. resolveTenantSandboxForConfig
-			// returns a disabled manager with no error before it ever reads the
-			// config row: once for the workspace kill switch, once for an empty
-			// or deployment-default config id. A named backend is the proof,
-			// and it is the same condition that is allowed to CREATE a pin
-			// below — what may write a pin may update whose it is.
-			//
-			// A config that exists but resolves to type "disabled" is skipped
-			// too. Ownership is genuine there, but such a config never creates
-			// a sandbox, so there is nothing whose teardown could go missing.
 			proven := err == nil && mgr != nil &&
 				sandbox.IsNamedSandboxBackendType(string(mgr.GetType()))
 			if proven && pinned.TenantID == 0 && owner != 0 {

@@ -37,24 +37,21 @@ const (
 )
 
 type mcpEndpointService struct {
-	repo           interfaces.MCPEndpointRepository
-	kbService      interfaces.KnowledgeBaseService
-	kbShareService interfaces.KBShareService
-	agentService   interfaces.CustomAgentService
+	repo         interfaces.MCPEndpointRepository
+	kbService    interfaces.KnowledgeBaseService
+	agentService interfaces.CustomAgentService
 }
 
 // NewMCPEndpointService creates the workspace MCP endpoint service.
 func NewMCPEndpointService(
 	repo interfaces.MCPEndpointRepository,
 	kbService interfaces.KnowledgeBaseService,
-	kbShareService interfaces.KBShareService,
 	agentService interfaces.CustomAgentService,
 ) interfaces.MCPEndpointService {
 	return &mcpEndpointService{
-		repo:           repo,
-		kbService:      kbService,
-		kbShareService: kbShareService,
-		agentService:   agentService,
+		repo:         repo,
+		kbService:    kbService,
+		agentService: agentService,
 	}
 }
 
@@ -298,11 +295,6 @@ func (s *mcpEndpointService) getOwned(ctx context.Context, tenantID uint64, id s
 	return ep, nil
 }
 
-// validateKnowledgeBases confirms every ID names a knowledge base the
-// workspace owns or has been granted through an organization share, and
-// returns the deduplicated list. The lookup is tenant-agnostic on purpose so
-// that shared knowledge bases resolve; authorization is then decided by
-// access.ResolveKB for the calling principal, never inferred from the ID.
 func (s *mcpEndpointService) validateKnowledgeBases(
 	ctx context.Context, tenantID uint64, ids []string,
 ) ([]string, error) {
@@ -328,7 +320,7 @@ func (s *mcpEndpointService) validateKnowledgeBases(
 			return nil, apperrors.NewNotFoundError("knowledge base not found: " + id)
 		}
 		if _, err := access.ResolveKB(ctx, access.KBRequest{Caller: caller}, kb,
-			types.OrgRoleViewer, s.kbShareService, nil); err != nil {
+			types.KBPermissionRead); err != nil {
 			return nil, apperrors.NewNotFoundError("knowledge base not found: " + id)
 		}
 		seen[id] = struct{}{}

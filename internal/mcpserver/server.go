@@ -49,7 +49,6 @@ type Server struct {
 	sessionService   interfaces.SessionService
 	messageService   interfaces.MessageService
 	agentService     interfaces.CustomAgentService
-	kbShareService   interfaces.KBShareService
 	tenantService    interfaces.TenantService
 	resourceCatalog  interfaces.ResourceCatalog
 	fileService      interfaces.FileService
@@ -74,7 +73,6 @@ func NewServer(
 	sessionService interfaces.SessionService,
 	messageService interfaces.MessageService,
 	agentService interfaces.CustomAgentService,
-	kbShareService interfaces.KBShareService,
 	tenantService interfaces.TenantService,
 	endpointRepo interfaces.MCPEndpointRepository,
 	db *gorm.DB,
@@ -92,7 +90,6 @@ func NewServer(
 		sessionService:   sessionService,
 		messageService:   messageService,
 		agentService:     agentService,
-		kbShareService:   kbShareService,
 		tenantService:    tenantService,
 		endpointRepo:     endpointRepo,
 		db:               db,

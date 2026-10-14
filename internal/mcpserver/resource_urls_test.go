@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -94,14 +93,14 @@ func newResourceURLFixture(t *testing.T) *resourceURLFixture {
 		&types.StoredResource{}, &types.ResourceBinding{}, &types.ResourceAccessGrant{},
 		&types.Knowledge{}, &types.KnowledgeBase{}, &types.Chunk{}, &types.StorageBackend{},
 	))
-	kb := &types.KnowledgeBase{ID: "kb-1", TenantID: 2, Name: "Shared"}
+	kb := &types.KnowledgeBase{ID: "kb-1", TenantID: 1, Name: "Shared"}
 	require.NoError(t, db.Create(kb).Error)
 	require.NoError(t, db.Create(&types.Knowledge{
-		ID: "doc-1", TenantID: 2, KnowledgeBaseID: kb.ID, Type: "file",
+		ID: "doc-1", TenantID: 1, KnowledgeBaseID: kb.ID, Type: "file",
 	}).Error)
 	catalog := service.NewResourceCatalog(repository.NewResourceRepository(db))
-	path := "local://2/exports/figure.png"
-	ref, err := catalog.Register(context.Background(), 2, path, interfaces.ResourceRegistration{
+	path := "local://1/exports/figure.png"
+	ref, err := catalog.Register(context.Background(), 1, path, interfaces.ResourceRegistration{
 		Kind: "image", MimeType: "image/png", OriginalName: "figure.png",
 	})
 	require.NoError(t, err)
@@ -112,8 +111,7 @@ func newResourceURLFixture(t *testing.T) *resourceURLFixture {
 	storage := &resourceURLStorage{files: files, catalog: catalog}
 	srv := &Server{
 		kbService:       &stubKBService{kbs: map[string]*types.KnowledgeBase{kb.ID: kb}},
-		kbShareService:  &stubKBShareService{shared: map[string]types.OrgMemberRole{kb.ID: types.OrgRoleViewer}},
-		tenantService:   &stubTenantService{tenants: map[uint64]*types.Tenant{2: {ID: 2}}},
+		tenantService:   &stubTenantService{tenants: map[uint64]*types.Tenant{1: {ID: 1}}},
 		resourceCatalog: catalog, storageResolver: storage,
 	}
 	ep := &types.MCPEndpoint{
@@ -161,7 +159,7 @@ func TestMCPResourceURLsRewriteTextAndTypedStructuredContent(t *testing.T) {
 		url, "https://weknora.example/prefix/r/",
 	))
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), resource.TenantID)
+	require.Equal(t, uint64(1), resource.TenantID)
 	var grants int64
 	require.NoError(t, f.db.Model(&types.ResourceAccessGrant{}).Count(&grants).Error)
 	require.EqualValues(t, 1, grants, "one response must reuse one URL across text and metadata")
@@ -169,7 +167,7 @@ func TestMCPResourceURLsRewriteTextAndTypedStructuredContent(t *testing.T) {
 	raw, err = json.Marshal(original.StructuredContent)
 	require.NoError(t, err)
 	require.Contains(t, string(raw), f.ref, "persisted/shared source values must remain untouched")
-	require.Equal(t, uint64(2), f.storage.tenant)
+	require.Equal(t, uint64(1), f.storage.tenant)
 }
 
 func TestMCPResourceURLsRequireExistingPreviewPermission(t *testing.T) {
@@ -180,9 +178,7 @@ func TestMCPResourceURLsRequireExistingPreviewPermission(t *testing.T) {
 		{"outside endpoint", func(_ *testing.T, f *resourceURLFixture) {
 			f.ep.KnowledgeBaseIDs = types.StringArray{"other-kb"}
 		}},
-		{"revoked share", func(_ *testing.T, f *resourceURLFixture) {
-			f.srv.kbShareService = &stubKBShareService{}
-		}},
+		{"foreign KB", func(_ *testing.T, f *resourceURLFixture) { f.srv.kbService.(*stubKBService).kbs["kb-1"].TenantID = 2 }},
 		{"wrong resource tenant", func(t *testing.T, f *resourceURLFixture) {
 			f.updateResource(t, map[string]any{"tenant_id": 3})
 		}},
@@ -199,14 +195,14 @@ func TestMCPResourceURLsRequireExistingPreviewPermission(t *testing.T) {
 			require.NoError(t, f.db.Delete(&types.KnowledgeBase{ID: "kb-1"}).Error)
 		}},
 		{"original upload", func(t *testing.T, f *resourceURLFixture) {
-			f.updateResource(t, map[string]any{"physical_path": "local://2/doc-1/original.png"})
+			f.updateResource(t, map[string]any{"physical_path": "local://1/doc-1/original.png"})
 			require.NoError(t, f.db.Model(&types.ResourceBinding{}).Where("owner_id = ?", "doc-1").
 				Update("relation", types.ResourceRelationSourceFile).Error)
 		}},
 		{"historical text only", func(t *testing.T, f *resourceURLFixture) {
 			require.NoError(t, f.db.Where("owner_id = ?", "doc-1").Delete(&types.ResourceBinding{}).Error)
 			require.NoError(t, f.db.Create(&types.Chunk{
-				ID: "chunk", TenantID: 2, KnowledgeID: "doc-1", KnowledgeBaseID: "kb-1",
+				ID: "chunk", TenantID: 1, KnowledgeID: "doc-1", KnowledgeBaseID: "kb-1",
 				Content: "![image](" + f.ref + ")", ImageInfo: `[{"url":"` + f.ref + `"}]`,
 			}).Error)
 		}},
@@ -223,27 +219,6 @@ func TestMCPResourceURLsRequireExistingPreviewPermission(t *testing.T) {
 			require.Zero(t, count, "denied references must never mint public grants")
 		})
 	}
-}
-
-func TestMCPResourceURLsUnrestrictedEndpointCoversSharedKB(t *testing.T) {
-	// ask on an unrestricted endpoint searches the agent's KBs, which can be
-	// shared from another workspace; the caller's viewer grant is what counts.
-	f := newResourceURLFixture(t)
-	f.ep.KnowledgeBaseIDs = nil
-	kbs := f.srv.kbService.(*stubKBService)
-	for i := 0; i < 20; i++ {
-		id := "own-" + strconv.Itoa(i)
-		kbs.kbs[id] = &types.KnowledgeBase{ID: id, TenantID: 1}
-	}
-	result := f.rewrite(mcp.NewToolResultText(f.ref))
-	require.True(t, strings.HasPrefix(result.Content[0].(mcp.TextContent).Text, "https://weknora.example/prefix/r/"))
-	require.Equal(t, 1, kbs.lookups, "only KBs that bind the reference are authorized")
-
-	f = newResourceURLFixture(t)
-	f.ep.KnowledgeBaseIDs = nil
-	f.srv.kbShareService = &stubKBShareService{}
-	result = f.rewrite(mcp.NewToolResultText(f.ref))
-	require.Equal(t, f.ref, result.Content[0].(mcp.TextContent).Text)
 }
 
 func TestMCPResourceURLsStructuredContentShapes(t *testing.T) {
@@ -263,16 +238,16 @@ func TestMCPResourceURLsLegacyGlobalFallbackUsesOwner(t *testing.T) {
 	f := newResourceURLFixture(t)
 	t.Setenv("APP_EXTERNAL_URL", "")
 	t.Setenv("STORAGE_TYPE", "minio")
-	f.updateResource(t, map[string]any{"physical_path": "minio://bucket/2/exports/figure.png", "provider": "minio"})
+	f.updateResource(t, map[string]any{"physical_path": "minio://bucket/1/exports/figure.png", "provider": "minio"})
 	f.srv.storageResolver = service.NewStorageBackendService(
 		repository.NewStorageBackendRepository(f.db), nil, f.srv.resourceCatalog,
 	)
 	f.srv.fileService = f.catalogWrapped()
 	result := f.rewrite(mcp.NewToolResultText(f.ref))
 	require.Equal(t, f.files.url, result.Content[0].(mcp.TextContent).Text)
-	require.Equal(t, "minio://bucket/2/exports/figure.png", f.files.path)
-	require.Equal(t, uint64(2), f.files.tenant)
-	require.Equal(t, uint64(2), f.files.tenantInfo)
+	require.Equal(t, "minio://bucket/1/exports/figure.png", f.files.path)
+	require.Equal(t, uint64(1), f.files.tenant)
+	require.Equal(t, uint64(1), f.files.tenantInfo)
 }
 
 func TestMCPResourceURLsLegacyPathsAndSafeFallback(t *testing.T) {
@@ -309,7 +284,7 @@ func TestMCPResourceURLsSkipErrorsAndPlainResults(t *testing.T) {
 
 func TestMCPExistingToolTransportRewritesResourceURLs(t *testing.T) {
 	f := newResourceURLFixture(t)
-	srv := NewServer(f.srv.kbService, nil, nil, nil, nil, nil, nil, f.srv.kbShareService,
+	srv := NewServer(f.srv.kbService, nil, nil, nil, nil, nil, nil,
 		f.srv.tenantService, nil, nil, nil, nil, f.srv.resourceCatalog, nil, f.srv.storageResolver)
 	// Replace the existing document handler to isolate the outbound middleware
 	// while retaining the real MCP transport, catalog and endpoint guard.

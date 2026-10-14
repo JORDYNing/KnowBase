@@ -37,7 +37,7 @@ type SearchService interface {
 	SearchMessages(ctx context.Context, req *sdk.SearchMessagesRequest) (*sdk.MessageSearchResult, error)
 }
 
-// NewCmdSearch builds `weknora message search "<query>"`.
+// NewCmdSearch builds `gamelib message search "<query>"`.
 func NewCmdSearch(f *cmdutil.Factory) *cobra.Command {
 	opts := &SearchOptions{}
 	cmd := &cobra.Command{
@@ -70,11 +70,11 @@ func NewCmdSearch(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringArrayVar(&opts.SessionIDs, "session", nil, "Restrict search to these session ids (repeatable)")
 	cmdutil.AddFormatFlag(cmd, messageSearchFields...)
 	cmdutil.SetAgentHelp(cmd, cmdutil.AgentHelp{
-		UsedFor:       "Search past Q&A pairs across chat history. This searches conversation messages — for RAG retrieval over documents use `weknora search chunks` instead.",
+		UsedFor:       "Search past Q&A pairs across chat history. This searches conversation messages — for RAG retrieval over documents use `gamelib search chunks` instead.",
 		RequiredFlags: []string{"<query> (positional)"},
 		Examples: []string{
-			`weknora message search "deploy steps"`,
-			`weknora message search "deploy steps" --session sess_abc --limit 5`,
+			`gamelib message search "deploy steps"`,
+			`gamelib message search "deploy steps" --session sess_abc --limit 5`,
 		},
 		Output: "envelope.data is an array of grouped results (request_id, session_id, query_content, answer_content, score); meta.count is the returned count, meta.total_count is the server-side total. --mode accepts keyword | vector | hybrid (server default: hybrid)",
 	})

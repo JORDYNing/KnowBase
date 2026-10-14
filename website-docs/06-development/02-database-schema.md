@@ -38,11 +38,10 @@ migrations/
 | 000000 | 核心初始化 | `tenants`、`models`、`knowledge_bases`、`knowledges`、`chunks`、`sessions`、`messages` |
 | 000001 | 用户认证 + Agent + MCP | `users`、`auth_tokens`、`custom_agents`、`mcp_services`、`knowledge_tags` |
 | 000002-000011 | 向量/检索 | `embeddings`（HNSW + BM25，受 `app.skip_embedding` 门控）、`chunks.flags`、`seq_id`、ParadeDB BM25 索引 |
-| 000012-000018 | 跨租户协作 | `organizations`、`organization_members`、`kb_shares`、`agent_shares`、`organization_join_requests` |
 | 000019-000028 | 消息/IM 增强 | `messages` 扩列（images、rendered_content、agent_duration_ms）、`im_channels`、`im_channel_sessions` |
 | 000029-000036 | 数据源与向量库抽象 | `data_sources`、`sync_logs`、`web_search_providers`、`vector_stores`、KB 的 asr_config/vector_store_id |
 | 000037-000041 | Wiki 与任务队列 | `wiki_pages`、`wiki_folders`、`wiki_page_issues`、`wiki_log_entries`（已于 000077 移除）、`task_pending_ops`、`task_dead_letters` |
-| 000042-000054 | RBAC / 审计 / 邀请 / 系统设置 | `mcp_tool_approvals`、`tenant_members`、`audit_logs`、`organization_tenant_members`（原 `organization_members` 改名归档）、`user_resource_favorites`、`tenant_invitations`、`user_kb_pins`、`system_settings` 与 `users.is_system_admin`（000053）、邀请链接列 `tenant_invitations.token`/`accepted_count`（000054） |
+| 000042-000054 | RBAC / 审计 / 邀请 / 系统设置 | `mcp_tool_approvals`、`tenant_members`、`audit_logs`、`user_resource_favorites`、`tenant_invitations`、`user_kb_pins`、`system_settings` 与 `users.is_system_admin`（000053）、邀请链接列 `tenant_invitations.token`/`accepted_count`（000054） |
 | 000055-000060 | 处理管道与嵌入渠道 | `knowledge_processing_spans`、`knowledges.pending_subtasks_count`（000056，`finalizing` 状态计数）、`embed_channels`、HNSW 1024 维索引 |
 | 000061-000067 | Wiki 层级 / OAuth / 文档多标签 / 主体身份 / 建议问题 | `wiki_pages` 层级列、`mcp_oauth_clients`、`mcp_oauth_tokens`、`knowledge_tag_relations`、主体身份列（000064：`tenants.api_principal_config`、`mcp_oauth_tokens.principal_type`/`principal_id`）、`tenant_api_keys`（000065，同时移除 `tenants.api_key`）、`message_suggestion_sets`、`message_suggestion_events` |
 | 000068-000074 | 存储/资源/临时文档 | `storage_backends`、`resources`、`resource_bindings`、`resource_access_grants`、`temporary_documents`、平台级 API key、OAuth 刷新租期 |
@@ -203,17 +202,15 @@ SQLite 版本号独立演进，不能与 PostgreSQL 数字一一对应：
 
 subject_id 使用 Principal.StorageID()，与 tenant_id 共同隔离身份。向量记录不放进条目列表，也不改变原知识库的访问权。
 
-### 跨租户协作（组织） {#_3-5-跨租户协作-组织}
+### 团队入驻申请
 
 | 表 | 用途 | 关键字段 |
 | --- | --- | --- |
-| `organizations` | 组织（跨租户协作单元，000012） | `id`、`name`、`owner_id`（FK→users）、`owner_tenant_id`、`invite_code`（唯一）+ 过期控制、`require_approval`、`searchable`、`member_limit` |
-| `organization_members_pre_plan3` | 旧版组织用户成员表（000045 由 `organization_members` 改名归档，仅供回滚） | `organization_id`、`user_id`、`tenant_id`、`role`；成员关系已改由 `organization_tenant_members` 维护 |
-| `organization_tenant_members` | 组织的租户成员（000045） | (`organization_id`,`tenant_id`) 唯一、`role`（admin/editor/viewer）、`representative_user_id` |
-| `organization_join_requests` | 加入/升级申请 | `organization_id`、`user_id`、`status`（pending 唯一）、`requested_role`、`request_type`（join/upgrade）、审批字段 |
-| `kb_shares` | 知识库共享到组织 | (`knowledge_base_id`,`organization_id`) 软删除下唯一、`source_tenant_id`、`permission` |
-| `agent_shares` | Agent 共享到组织 | FK (`agent_id`,`source_tenant_id`)→custom_agents 复合主键、`organization_id`、`permission` |
-| `tenant_disabled_shared_agents` | 租户禁用某共享 Agent | PK（`tenant_id`,`agent_id`,`source_tenant_id`） |
+| `tenant_join_requests` | 用户申请加入团队空间（PostgreSQL 116 / SQLite 36） | `(tenant_id,user_id)` 唯一；status、role、version、source、reviewed_by、review_message、reviewed_at |
+
+`source=feishu_bootstrap` 在同一空间只能有一条，作为初始化 Owner 的永久标记。重新申请增加版本，审批按版本校验，审核结果与成员关系在同一事务中写入。
+
+PostgreSQL 117 / SQLite 37 删除历史组织共享关系表；知识库、智能体、文档及正常空间成员保留。新账号的 `users.tenant_id` 为空，批准后才关联团队空间。
 
 ### Wiki {#_3-6-wiki}
 
@@ -293,13 +290,6 @@ erDiagram
     mcp_services ||--o{ mcp_metadata : "工具目录快照"
     tenants ||--o{ mcp_endpoints : "对外 MCP 端点"
 
-    users ||--o{ organizations : "owner_id"
-    organizations ||--o{ organization_tenant_members : "租户成员"
-    organizations ||--o{ kb_shares : "知识库共享"
-    organizations ||--o{ agent_shares : "Agent 共享"
-    organizations ||--o{ organization_join_requests : "加入申请"
-    knowledge_bases ||--o{ kb_shares : "被共享"
-    custom_agents ||--o{ agent_shares : "被共享 (id, tenant_id)"
 
     knowledge_bases ||--o{ wiki_pages : "Wiki 页面"
     wiki_pages }o--o| wiki_folders : "folder_id"

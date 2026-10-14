@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -12,12 +13,13 @@ import (
 )
 
 var (
-	ErrUserNotFound       = errors.New("user not found")
-	ErrUserAlreadyExists  = errors.New("user already exists")
-	ErrTokenNotFound      = errors.New("token not found")
-	ErrCannotRevokeSelf   = errors.New("cannot revoke your own system admin privileges")
-	ErrLastSystemAdmin    = errors.New("cannot revoke the last remaining system administrator")
-	ErrUserNotSystemAdmin = errors.New("user is not a system administrator")
+	ErrFeishuIdentityAlreadyBound = errors.New("Feishu identity is already bound")
+	ErrUserNotFound               = errors.New("user not found")
+	ErrUserAlreadyExists          = errors.New("user already exists")
+	ErrTokenNotFound              = errors.New("token not found")
+	ErrCannotRevokeSelf           = errors.New("cannot revoke your own system admin privileges")
+	ErrLastSystemAdmin            = errors.New("cannot revoke the last remaining system administrator")
+	ErrUserNotSystemAdmin         = errors.New("user is not a system administrator")
 )
 
 // userRepository implements user repository interface
@@ -78,7 +80,7 @@ func (r *userRepository) GetUsersByIDs(ctx context.Context, ids []string) (map[s
 // GetUserByEmail gets a user by email
 func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*types.User, error) {
 	var user types.User
-	if err := r.db.WithContext(ctx).Where("email = ?", email).First(&user).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("LOWER(email) = ?", strings.ToLower(strings.TrimSpace(email))).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound
 		}
@@ -134,7 +136,7 @@ func (r *userRepository) UpdateUser(ctx context.Context, user *types.User) error
 			// Preserve Save's all-fields behaviour while keeping the nullable
 			// tenant column out of the struct write, then explicitly store NULL.
 			// Writing uint64(0) would violate the PostgreSQL tenant FK.
-			if err := tx.Omit("tenant_id").Save(user).Error; err != nil {
+			if err := tx.Omit("tenant_id", "feishu_open_id").Save(user).Error; err != nil {
 				return err
 			}
 			return tx.Model(&types.User{}).
@@ -142,7 +144,9 @@ func (r *userRepository) UpdateUser(ctx context.Context, user *types.User) error
 				UpdateColumn("tenant_id", nil).Error
 		})
 	}
-	return r.db.WithContext(ctx).Save(user).Error
+	// Provider bindings are changed only by BindFeishuIdentity. A stale
+	// profile/preferences snapshot must not overwrite a concurrent binding.
+	return r.db.WithContext(ctx).Omit("feishu_open_id").Save(user).Error
 }
 
 // DeleteUser deletes a user
@@ -361,4 +365,43 @@ func (r *authTokenRepository) DeleteExpiredTokens(ctx context.Context) error {
 // RevokeTokensByUserID revokes all tokens for a user
 func (r *authTokenRepository) RevokeTokensByUserID(ctx context.Context, userID string) error {
 	return r.db.WithContext(ctx).Model(&types.AuthToken{}).Where("user_id = ?", userID).Update("is_revoked", true).Error
+}
+
+// BindFeishuIdentity compares and writes in one statement. Different concurrent
+// Feishu identities cannot both bind the same initially-unbound local account.
+func (r *userRepository) BindFeishuIdentity(ctx context.Context, userID, openID string) (*types.User, error) {
+	openID = strings.TrimSpace(openID)
+	if openID == "" {
+		return nil, ErrFeishuIdentityAlreadyBound
+	}
+	res := r.db.WithContext(ctx).Model(&types.User{}).
+		Where("id = ? AND (feishu_open_id IS NULL OR feishu_open_id = '' OR feishu_open_id = ?)", userID, openID).
+		Updates(map[string]any{"feishu_open_id": openID, "updated_at": time.Now()})
+	if res.Error != nil {
+		text := strings.ToLower(res.Error.Error())
+		if strings.Contains(text, "feishu_open_id") && (strings.Contains(text, "unique") || strings.Contains(text, "duplicate")) {
+			return nil, ErrFeishuIdentityAlreadyBound
+		}
+		return nil, res.Error
+	}
+	user, err := r.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if res.RowsAffected != 1 || user.FeishuOpenID != openID {
+		return nil, ErrFeishuIdentityAlreadyBound
+	}
+	return user, nil
+}
+
+func (r *userRepository) UpdateFeishuAvatar(ctx context.Context, userID, openID, avatar string) error {
+	res := r.db.WithContext(ctx).Model(&types.User{}).Where("id = ? AND feishu_open_id = ?", userID, openID).
+		Updates(map[string]any{"avatar": avatar, "updated_at": time.Now()})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected != 1 {
+		return ErrFeishuIdentityAlreadyBound
+	}
+	return nil
 }

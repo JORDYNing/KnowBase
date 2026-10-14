@@ -10,11 +10,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
+	apprepo "github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
@@ -150,7 +151,7 @@ func (s *userService) LoginWithFeishu(
 		return nil, errors.New("Feishu user_info missing open_id")
 	}
 
-	user, isNewUser, err := s.resolveFeishuUser(ctx, info, provisioning)
+	user, isNewUser, err := s.resolveFeishuUser(ctx, info, types.TenantProvisioningTenantless)
 	if err != nil {
 		return nil, err
 	}
@@ -162,6 +163,18 @@ func (s *userService) LoginWithFeishu(
 		return nil, err
 	}
 
+	// Enrollment is completed only after Feishu verified the identity. A
+	// missing/disabled target leaves a valid tenantless session for the status UI.
+	if s.joinRequestService == nil {
+		return nil, errors.New("team enrollment service unavailable")
+	}
+	if err := s.joinRequestService.EnsureFeishuApplication(ctx, user, feishuVerifiedEmail(info)); err != nil && !errors.Is(err, types.ErrJoinTargetUnavailable) {
+		return nil, err
+	}
+	user, err = s.userRepo.GetUserByID(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
 	resolvedTenantID := s.resolveLoginTenantID(ctx, user)
 	accessToken, refreshToken, err := s.generateTokensForTenant(ctx, user, resolvedTenantID)
 	if err != nil {
@@ -170,7 +183,7 @@ func (s *userService) LoginWithFeishu(
 
 	var tenant *types.Tenant
 	if resolvedTenantID > 0 {
-		if t, terr := s.tenantService.GetTenantByID(ctx, resolvedTenantID); terr == nil {
+		if t, terr := s.tenantService.GetTenantByID(ctx, resolvedTenantID); terr == nil && t != nil && strings.EqualFold(strings.TrimSpace(t.Status), "active") {
 			tenant = t
 		} else {
 			logger.Warnf(ctx, "Feishu login: failed to load tenant %d for user %s: %v",
@@ -301,59 +314,52 @@ func (s *userService) fetchFeishuUserInfo(
 	return envelope.Data, nil
 }
 
-func (s *userService) resolveFeishuUser(
-	ctx context.Context,
-	info *feishuUserInfoData,
-	provisioning types.TenantProvisioningMode,
-) (*types.User, bool, error) {
-	openID := strings.TrimSpace(info.OpenID)
+func (s *userService) bindFeishuIdentity(ctx context.Context, user *types.User, openID string) (*types.User, error) {
+	binder, ok := s.userRepo.(interfaces.FeishuIdentityRepository)
+	if !ok {
+		return nil, errors.New("atomic Feishu identity repository unavailable")
+	}
+	bound, err := binder.BindFeishuIdentity(ctx, user.ID, openID)
+	if errors.Is(err, apprepo.ErrFeishuIdentityAlreadyBound) {
+		return nil, ErrFeishuIdentityConflict
+	}
+	return bound, err
+}
 
+func (s *userService) resolveFeishuUser(ctx context.Context, info *feishuUserInfoData, provisioning types.TenantProvisioningMode) (*types.User, bool, error) {
+	openID := strings.TrimSpace(info.OpenID)
 	user, err := s.userRepo.GetUserByFeishuOpenID(ctx, openID)
 	if err == nil && user != nil {
 		return user, false, nil
 	}
 	if err != nil && !isUserLookupNotFound(err) {
-		return nil, false, fmt.Errorf("failed to query user by feishu_open_id: %w", err)
+		return nil, false, err
 	}
-
 	for _, email := range feishuCandidateEmails(info) {
 		user, err = s.userRepo.GetUserByEmail(ctx, email)
-		if err != nil {
-			if isUserLookupNotFound(err) {
-				continue
-			}
-			return nil, false, fmt.Errorf("failed to query user by email: %w", err)
+		if err != nil && !isUserLookupNotFound(err) {
+			return nil, false, err
 		}
 		if user == nil {
 			continue
 		}
-		existing := strings.TrimSpace(user.FeishuOpenID)
-		if existing != "" && existing != openID {
-			return nil, false, ErrFeishuIdentityConflict
-		}
-		user.FeishuOpenID = openID
-		user.UpdatedAt = time.Now()
-		if err := s.userRepo.UpdateUser(ctx, user); err != nil {
-			return nil, false, fmt.Errorf("failed to bind Feishu open_id: %w", err)
-		}
-		return user, false, nil
+		bound, err := s.bindFeishuIdentity(ctx, user, openID)
+		return bound, false, err
 	}
-
-	oidcInfo := &types.OIDCUserInfo{
-		Subject:  openID,
-		Username: feishuDisplayName(info),
-		Email:    feishuResolvedEmail(info),
-	}
-	user, err = s.provisionOIDCUser(ctx, oidcInfo, provisioning)
+	oidcInfo := &types.OIDCUserInfo{Subject: openID, Username: feishuDisplayName(info), Email: feishuResolvedEmail(info)}
+	user, err = s.provisionOIDCUser(ctx, oidcInfo, types.TenantProvisioningTenantless)
 	if err != nil {
-		return nil, false, err
+		// Registration can lose a concurrent first-login race on email. Re-read
+		// the winning account and perform the same conditional identity binding.
+		winner, lookupErr := s.userRepo.GetUserByEmail(ctx, oidcInfo.Email)
+		if lookupErr != nil || winner == nil {
+			return nil, false, err
+		}
+		bound, bindErr := s.bindFeishuIdentity(ctx, winner, openID)
+		return bound, false, bindErr
 	}
-	user.FeishuOpenID = openID
-	user.UpdatedAt = time.Now()
-	if err := s.userRepo.UpdateUser(ctx, user); err != nil {
-		return nil, false, fmt.Errorf("failed to persist Feishu open_id on new user: %w", err)
-	}
-	return user, true, nil
+	bound, err := s.bindFeishuIdentity(ctx, user, openID)
+	return bound, true, err
 }
 
 func (s *userService) applyFeishuProfile(ctx context.Context, user *types.User, info *feishuUserInfoData) error {
@@ -361,23 +367,27 @@ func (s *userService) applyFeishuProfile(ctx context.Context, user *types.User, 
 	if avatar == "" {
 		avatar = strings.TrimSpace(info.AvatarThumb)
 	}
-	changed := false
-	if avatar != "" && user.Avatar != avatar {
-		user.Avatar = avatar
-		changed = true
-	}
-	if strings.TrimSpace(user.FeishuOpenID) == "" {
-		user.FeishuOpenID = strings.TrimSpace(info.OpenID)
-		changed = true
-	}
-	if !changed {
+	if avatar == "" || avatar == user.Avatar {
 		return nil
 	}
-	user.UpdatedAt = time.Now()
-	if err := s.userRepo.UpdateUser(ctx, user); err != nil {
-		return fmt.Errorf("failed to update Feishu profile fields: %w", err)
+	repo, ok := s.userRepo.(interfaces.FeishuIdentityRepository)
+	if !ok {
+		return errors.New("atomic Feishu identity repository unavailable")
 	}
+	if err := repo.UpdateFeishuAvatar(ctx, user.ID, user.FeishuOpenID, avatar); err != nil {
+		return err
+	}
+	user.Avatar = avatar
 	return nil
+}
+
+// Enterprise email is authoritative when present. Never bootstrap from a
+// secondary personal address if Feishu supplied a different enterprise one.
+func feishuVerifiedEmail(info *feishuUserInfoData) string {
+	if email := strings.TrimSpace(info.EnterpriseEmail); email != "" {
+		return strings.ToLower(email)
+	}
+	return strings.ToLower(strings.TrimSpace(info.Email))
 }
 
 func feishuCandidateEmails(info *feishuUserInfoData) []string {

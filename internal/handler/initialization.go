@@ -458,7 +458,7 @@ func (h *InitializationHandler) UpdateKBConfig(c *gin.Context) {
 
 // kbSettingsAccess reports whether the caller's workspace owns kb. Another
 // workspace may change KB settings only through an admin share: the frontend
-// offers KB settings to share admins alone, and OrgRoleEditor edits content,
+// offers KB settings to share admins alone, and KBPermissionWrite edits content,
 // not settings. KBAccessWrite on the route also admits share editors, so the
 // grant's effective share permission is checked here.
 func kbSettingsAccess(c *gin.Context, kb *types.KnowledgeBase) (bool, error) {
@@ -467,8 +467,8 @@ func kbSettingsAccess(c *gin.Context, kb *types.KnowledgeBase) (bool, error) {
 	}
 	grant, ok := middleware.KBAccessFromContext(c)
 	if !ok || grant.KnowledgeBase == nil || grant.KnowledgeBase.ID != kb.ID ||
-		!grant.Permission.HasPermission(types.OrgRoleAdmin) {
-		return false, errors.NewForbiddenError("修改共享知识库的设置需要管理员共享权限")
+		!grant.Permission.HasPermission(types.KBPermissionAdmin) {
+		return false, errors.NewForbiddenError("修改知识库的设置需要管理员权限")
 	}
 	return false, nil
 }
@@ -641,11 +641,6 @@ func (h *InitializationHandler) getKnowledgeBaseForInitialization(ctx context.Co
 		logger.Error(ctx, "Knowledge base not found")
 		return nil, errors.NewNotFoundError("知识库不存在")
 	}
-	// Initialization rewrites the models the KB points at, and those rows
-	// belong to the KB's workspace. A shared-KB editor passes the route's
-	// KBAccessWrite guard (which moves execution into that workspace), so
-	// without this check it could repoint the owner's models at its own
-	// endpoint and key.
 	if kb.TenantID != types.CallerFromContext(ctx).TenantID {
 		return nil, errors.NewForbiddenError("只有知识库所属空间可以初始化知识库")
 	}

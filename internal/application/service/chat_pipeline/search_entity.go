@@ -139,10 +139,6 @@ func (p *PluginSearchEntity) OnEvent(ctx context.Context,
 		logger.Infof(ctx, "No new chunk found")
 		return next()
 	}
-	// Graph hits from an org-shared KB belong to the sharing workspace, so
-	// the lookups are not tenant scoped (as for parents, #3342). The graph
-	// namespaces are the KBs in this turn's scope; a chunk is only used when
-	// its row belongs to one of them.
 	allowedKBs := make(map[string]bool, len(knowledgeBaseIDs)+len(entityKnowledge))
 	for _, id := range knowledgeBaseIDs {
 		allowedKBs[id] = true

@@ -33,7 +33,6 @@ const props = defineProps<{
   disabled?: boolean;
   sessionId?: string;
   agentId?: string;
-  agentSourceTenantId?: string;
 }>();
 
 const emit = defineEmits<{
@@ -145,7 +144,6 @@ const uploadAttachment = async (attachment: AttachmentFile) => {
       props.sessionId,
       attachment.file,
       props.agentId,
-      props.agentSourceTenantId,
       'auto',
       (progress) => {
         attachment.progress = progress;

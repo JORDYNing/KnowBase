@@ -153,10 +153,6 @@ func (r *resourceURLResolver) boundKnowledgeBases(reference string) []string {
 	return origins.KnowledgeBaseIDs
 }
 
-// knowledgeBaseScope authorizes one KB for this endpoint. A restricted endpoint
-// accepts only its allowlist; an unrestricted one accepts any KB the caller can
-// view, which covers the shared KBs `ask` reaches through the agent's own KB
-// selection. Owned and shared KBs alike go through the same viewer grant.
 func (r *resourceURLResolver) knowledgeBaseScope(kbID string) *resourceKBScope {
 	if scope, ok := r.kbs[kbID]; ok {
 		return scope
@@ -170,7 +166,7 @@ func (r *resourceURLResolver) knowledgeBaseScope(kbID string) *resourceKBScope {
 	if err != nil || kb == nil {
 		return scope
 	}
-	grant, ctx, err := r.server.authorizeKB(r.ctx, kb, types.OrgRoleViewer)
+	grant, ctx, err := r.server.authorizeKB(r.ctx, kb, types.KBPermissionRead)
 	if err != nil {
 		logResourceAccessError(r.ctx, "resolve grant", kbID, err)
 		return scope
@@ -189,8 +185,6 @@ func logResourceAccessError(ctx context.Context, step, kbID string, err error) {
 	logger.Warnf(ctx, "[MCP] resource URL %s failed for knowledge base %s: %v", step, kbID, err)
 }
 
-// fileService opens the owner's storage. ctx comes from authorizeKB, so it
-// already carries the owner's TenantInfo for shared knowledge bases.
 func (r *resourceURLResolver) fileService(ctx context.Context, file access.FileAccess) interfaces.FileService {
 	tenant, _ := types.TenantInfoFromContext(ctx)
 	if tenant == nil || tenant.ID != file.OwnerTenantID {

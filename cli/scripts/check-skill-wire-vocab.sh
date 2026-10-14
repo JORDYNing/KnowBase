@@ -8,6 +8,8 @@ cd "$(dirname "$0")/.."
 # legacy_term:replacement — extend this list in the SAME commit that
 # renames/removes a flag, command, tool, or error code.
 BANNED=(
+  "weknora:gamelib (CLI renamed)"
+  "WEKNORA_:GAMELIB_ (CLI environment prefix renamed)"
   "agent_invoke:session_ask (MCP tool renamed in v0.9)"
   "agent invoke:session ask --agent (moved in v0.9)"
   "mcp.readonly_mode:removed in v0.9 (never emitted)"

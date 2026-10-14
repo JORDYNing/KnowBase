@@ -64,10 +64,8 @@ func CollectImageInfoByChunkIDs(
 	})
 }
 
-// CollectImageInfoByChunkIDsOnly is the shared-KB variant of
-// CollectImageInfoByChunkIDs: the chunk IDs can belong to an org-shared KB
-// owned by another workspace, so the child lookup must not filter by the
-// caller's tenant (#3342).
+// CollectImageInfoByChunkIDsOnly resolves children by authoritative chunk IDs.
+// The caller must authorize the parent IDs before using this unscoped lookup.
 func CollectImageInfoByChunkIDsOnly(
 	ctx context.Context,
 	chunkRepo interfaces.ChunkRepository,
@@ -233,10 +231,8 @@ func EnrichSearchResultsImageInfo(
 	})
 }
 
-// EnrichSearchResultsImageInfoOnly is the shared-KB variant of
-// EnrichSearchResultsImageInfo for results that may come from an org-shared
-// KB owned by another workspace. The result IDs must already be authorized
-// (they come from retrieval over KBs the caller may read).
+// EnrichSearchResultsImageInfoOnly enriches already-authorized retrieval
+// results by chunk ID. It does not perform resource authorization.
 func EnrichSearchResultsImageInfoOnly(
 	ctx context.Context,
 	chunkRepo interfaces.ChunkRepository,

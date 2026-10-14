@@ -199,10 +199,6 @@ func RequireSystemAdmin(cfg *config.Config) gin.HandlerFunc {
 // allowed KB scope remain mandatory. For human callers, decision order is:
 //  1. role >= min -> allow without running lookup.
 //  2. cross-tenant superuser -> allow without running lookup.
-//  3. enforcement off -> log, allow without running lookup. This is the
-//     critical rollout-safety guarantee: when EnableRBAC is false, the
-//     lookup is NEVER invoked, so dormant mode incurs zero extra DB
-//     roundtrips on hot per-resource mutation paths.
 //  4. lookup returns ErrResourceNotFound -> pass through; let the
 //     handler issue the proper 404.
 //  5. lookup returns other error -> 503 (transient/unexpected fault).
@@ -248,13 +244,10 @@ func RequireOwnershipOrRole(min types.TenantRole, lookup CreatorLookup, cfg *con
 	}
 }
 
-// rbacEnforcementEnabled reports whether middleware should actually
-// reject failed checks. When the flag is off the middleware still runs
-// role-only checks (logging, fast paths), but rejection is downgraded
-// to a warning and ownership lookups are skipped entirely so the dormant
-// rollout window incurs no per-request DB cost.
+// rbacEnforcementEnabled is unconditional in the team workspace deployment.
+// Legacy configuration cannot disable role or ownership checks.
 func rbacEnforcementEnabled(cfg *config.Config) bool {
-	return cfg != nil && cfg.Tenant.IsRBACEnforced()
+	return true
 }
 
 // ErrOwnershipForbidden is returned by EvaluateOwnershipOrRole when the
@@ -315,12 +308,7 @@ func logOwnershipDecision(
 // helper backs the X-Tenant-ID gate in auth.go and the RequireRole /
 // RequireOwnershipOrRole guards above.
 
-// warnOnNilConfig emits a one-shot startup warning when a guard is
-// constructed with a nil-or-incomplete config. nil cfg makes
-// rbacEnforcementEnabled return false, which means an entire deployment
-// silently runs with RBAC disabled — usually because of a configuration
-// bug rather than an intentional choice. Operators should see a noisy
-// log line at boot pointing at the misconfiguration.
+// warnOnNilConfig reports missing configuration while checks remain enforced.
 var nilCfgWarnOnce sync.Once
 
 func warnOnNilConfig(cfg *config.Config) {
@@ -330,7 +318,7 @@ func warnOnNilConfig(cfg *config.Config) {
 	nilCfgWarnOnce.Do(func() {
 		logger.Errorf(context.Background(),
 			"[rbac] middleware constructed with nil/incomplete config "+
-				"(cfg=%v); enforcement is permanently disabled. This is "+
+				"(cfg=%v); strict role enforcement remains active. This is "+
 				"almost certainly a wiring bug.", cfg)
 	})
 }

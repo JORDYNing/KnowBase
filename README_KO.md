@@ -328,7 +328,7 @@ docker compose up -d    # 새 이미지로 컨테이너 재생성
 
 | | 클라이언트 | 용도 |
 |:-:|----------|------|
-| <img src="./docs/images/readme/icons/terminal.svg" width="22" height="22" alt=""> | [**CLI `weknora`**](./cli/README.md) | Agent 우선 명령줄 도구. 전체 API를 다루며 엄선한 MCP 도구와 내장 Agent Skills 제공 |
+| <img src="./docs/images/readme/icons/terminal.svg" width="22" height="22" alt=""> | [**CLI `gamelib`**](./cli/README.md) | Agent 우선 명령줄 도구. 전체 API를 다루며 엄선한 MCP 도구와 내장 Agent Skills 제공 |
 | <img src="./docs/images/readme/icons/plug.svg" width="22" height="22" alt=""> | **내장 MCP Server** | Streamable HTTP로 지식베이스를 Cursor, Claude 등 MCP 클라이언트에 공개. [`mcp-server/`](./mcp-server/MCP_CONFIG.md)의 Python 서버는 지원 중단 |
 | <img src="./website-docs/homepage/public/docs/_home/brands/browserskill.png" width="22" height="22" alt=""> | **로컬 브라우저(BrowserSkill)** | 에이전트가 사용자 자신의 Chrome / Edge를 조작 |
 | <img src="./website-docs/homepage/public/docs/_home/brands/chrome.svg" width="22" height="22" alt=""> | [**Chrome 확장 프로그램**](https://chromewebstore.google.com/detail/jpemjbopikggjlmikmclgbmkhhopjdgd) | 텍스트, 이미지 또는 전체 페이지를 선택해 원클릭으로 지식 항목으로 저장. 복사/붙여넣기나 파일 업로드 불필요 |
@@ -341,18 +341,18 @@ docker compose up -d    # 새 이미지로 컨테이너 재생성
 
 ### 명령줄 도구
 
-`weknora`는 터미널이나 AI 에이전트에서 API를 다루기 위한 공식 CLI입니다. **Agent 우선**으로 설계되어 모든 명령이 기본적으로 안정적인 JSON 엔벨로프를 출력하고(타입이 지정된 오류 코드는 종료 코드에 매핑), `--format text`로 사람이 읽기 좋은 형태로 표시합니다. 엄선한 MCP 도구(`weknora mcp serve`)를 제공하며 Agent Skills를 내장하고 있습니다.
+`gamelib`는 터미널이나 AI 에이전트에서 API를 다루기 위한 공식 CLI입니다. **Agent 우선**으로 설계되어 모든 명령이 기본적으로 안정적인 JSON 엔벨로프를 출력하고(타입이 지정된 오류 코드는 종료 코드에 매핑), `--format text`로 사람이 읽기 좋은 형태로 표시합니다. 엄선한 MCP 도구(`gamelib mcp serve`)를 제공하며 Agent Skills를 내장하고 있습니다.
 
 ```bash
-weknora profile add prod --host https://kb.example.com --use
-weknora auth login
-weknora kb list
-weknora link --kb my-knowledge-base    # 현재 디렉터리 연결
-weknora doc upload notes.md
-weknora chat "설계 문서를 요약해 줘"
+gamelib profile add prod --host https://kb.example.com --use
+gamelib auth login
+gamelib kb list
+gamelib link --kb my-knowledge-base    # 현재 디렉터리 연결
+gamelib doc upload notes.md
+gamelib chat "설계 문서를 요약해 줘"
 ```
 
-헤드리스 / CI 환경에서는 `WEKNORA_API_KEY`와 `WEKNORA_HOST`를 설정하면 `auth login` 없이 사용할 수 있으며, 자격 증명이 디스크에 기록되지 않습니다. 설치와 5분 빠른 시작은 [`cli/README.md`](./cli/README.md), AI 에이전트가 의존하는 운영 규약은 [`cli/AGENTS.md`](./cli/AGENTS.md)를 참고하세요.
+헤드리스 / CI 환경에서는 `GAMELIB_API_KEY`와 `GAMELIB_HOST`를 설정하면 `auth login` 없이 사용할 수 있으며, 자격 증명이 디스크에 기록되지 않습니다. 설치와 5분 빠른 시작은 [`cli/README.md`](./cli/README.md), AI 에이전트가 의존하는 운영 규약은 [`cli/AGENTS.md`](./cli/AGENTS.md)를 참고하세요.
 
 ## 문서
 

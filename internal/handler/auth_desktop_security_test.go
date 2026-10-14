@@ -31,7 +31,7 @@ func (s *desktopTestTenants) GetTenantByID(context.Context, uint64) (*types.Tena
 	return &types.Tenant{ID: 1}, nil
 }
 
-func TestAutoSetupRequiresNativeCapability(t *testing.T) {
+func TestAutoSetupStaysDisabledEvenWithNativeCapability(t *testing.T) {
 	oldEdition, oldToken := Edition, liteSetupToken
 	t.Cleanup(func() { Edition = oldEdition; liteSetupToken = oldToken })
 	Edition = "lite"
@@ -44,13 +44,8 @@ func TestAutoSetupRequiresNativeCapability(t *testing.T) {
 		ctx.Request = httptest.NewRequest("POST", "/api/v1/auth/auto-setup", nil)
 		ctx.Request.Header.Set("X-WeKnora-Desktop-Token", token)
 		h.AutoSetup(ctx)
-		if token != "test-native-capability" {
-			require.NotEmpty(t, ctx.Errors)
-			require.Zero(t, users.minted)
-		} else {
-			require.Empty(t, ctx.Errors)
-			require.Equal(t, 1, users.minted)
-		}
+		require.NotEmpty(t, ctx.Errors)
+		require.Zero(t, users.minted)
 	}
 	SetLiteSetupToken("")
 	recorder := httptest.NewRecorder()
@@ -58,5 +53,5 @@ func TestAutoSetupRequiresNativeCapability(t *testing.T) {
 	ctx.Request = httptest.NewRequest("POST", "/api/v1/auth/auto-setup", nil)
 	h.AutoSetup(ctx)
 	require.NotEmpty(t, ctx.Errors)
-	require.Equal(t, 1, users.minted)
+	require.Zero(t, users.minted)
 }

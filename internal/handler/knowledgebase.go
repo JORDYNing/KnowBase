@@ -33,8 +33,6 @@ type KnowledgeBaseHandler struct {
 	service            interfaces.KnowledgeBaseService
 	profileService     interfaces.KnowledgeBaseProfileService
 	knowledgeService   interfaces.KnowledgeService
-	kbShareService     interfaces.KBShareService
-	agentShareService  interfaces.AgentShareService
 	asynqClient        interfaces.TaskEnqueuer
 	vectorStoreService interfaces.VectorStoreService // enriches KB responses with bound store display
 	// userService 仅在 list 类接口里用于批量回填 creator_name；
@@ -52,8 +50,6 @@ func NewKnowledgeBaseHandler(
 	cfg *config.Config,
 	service interfaces.KnowledgeBaseService,
 	knowledgeService interfaces.KnowledgeService,
-	kbShareService interfaces.KBShareService,
-	agentShareService interfaces.AgentShareService,
 	asynqClient interfaces.TaskEnqueuer,
 	vectorStoreService interfaces.VectorStoreService,
 	userService interfaces.UserService,
@@ -66,8 +62,6 @@ func NewKnowledgeBaseHandler(
 		profileService:     profileService,
 		service:            service,
 		knowledgeService:   knowledgeService,
-		kbShareService:     kbShareService,
-		agentShareService:  agentShareService,
 		asynqClient:        asynqClient,
 		vectorStoreService: vectorStoreService,
 		userService:        userService,
@@ -92,23 +86,6 @@ func (h *KnowledgeBaseHandler) resolveResourceRewriter(c *gin.Context) (*storage
 	return storageurl.NewRequestRewriter(ctx, mode, h.fileService, h.storageResolver), nil
 }
 
-// buildKBResponse turns a knowledge base into a JSON-ready response shape,
-// merging the bound vector store's display metadata and any caller-supplied
-// extras (e.g., my_permission for shared KBs). Returns the kb pointer
-// unchanged on serialization failure so the request still succeeds.
-//
-// The map-merge approach (rather than a wrapper struct embedding the kb)
-// is deliberate: KnowledgeBase has a custom MarshalJSON, and embedding
-// would promote it to any wrapper struct and silently swallow the extra
-// fields. The same pattern is already used by GetKnowledgeBase to add the
-// my_permission field for shared knowledge bases.
-//
-// Shared-KB suppression: when storeView.Source == StoreSourceShared (the
-// caller is not the KB owner), the raw vector_store_id UUID is stripped
-// from the response so the owner-tenant's store inventory cannot be
-// correlated across multiple shared KBs. Name / engine type / status are
-// already empty in the SharedStoreDisplay payload; suppressing the UUID
-// completes the cross-tenant metadata hiding.
 func buildKBResponse(
 	kb *types.KnowledgeBase,
 	storeView types.StoreDisplay,
@@ -183,41 +160,6 @@ func (h *KnowledgeBaseHandler) buildKBListResponse(
 	return out
 }
 
-// sharedKBRow projects a SharedKnowledgeBaseInfo into a response payload
-// that respects the cross-tenant strip rule: the embedded KnowledgeBase
-// row runs through buildKBResponse with SharedStoreDisplay() so its
-// vector_store_id and any owner-tenant store metadata never reach the
-// wire. The share-record fields (share_id, organization_id, etc.) are
-// kept intact alongside the stripped KB. Callers can pass extras to
-// merge view-specific keys such as is_mine or source_from_agent.
-//
-// Always uses SharedStoreDisplay() regardless of whether the caller is
-// the owner; the cross-tenant share endpoints serve mixed audiences and
-// the owner's "rich" view of their own bindings is already served by
-// ListKnowledgeBases / single-KB GET on the standard knowledge-base
-// routes. Trying to enrich own-row entries here would either require
-// threading the vector-store service through the organization handler
-// or duplicating the lookup logic — both larger than the security fix
-// warrants and easy to follow up on once needed.
-func sharedKBRow(
-	info *types.SharedKnowledgeBaseInfo, extras map[string]interface{},
-) map[string]interface{} {
-	kbView := buildKBResponse(info.KnowledgeBase, types.SharedStoreDisplay(), nil)
-	row := map[string]interface{}{
-		"knowledge_base":   kbView,
-		"share_id":         info.ShareID,
-		"organization_id":  info.OrganizationID,
-		"org_name":         info.OrgName,
-		"permission":       info.Permission,
-		"source_tenant_id": info.SourceTenantID,
-		"shared_at":        info.SharedAt,
-	}
-	for k, v := range extras {
-		row[k] = v
-	}
-	return row
-}
-
 // envDefaultStoreView returns the env-fallback store display enriched with
 // the configured env-store engine type when the service is available. The
 // service path populates EngineType so the caller can show "postgres" or
@@ -231,12 +173,6 @@ func (h *KnowledgeBaseHandler) envDefaultStoreView(ctx context.Context) types.St
 	return h.vectorStoreService.EnvDefaultStoreView(ctx)
 }
 
-// batchResolveKBStoreViews collects the unique own-tenant store IDs across
-// the KB slice and resolves them in one BatchResolveStoreView call.
-// Cross-tenant shared KBs never enter the batch — they always render
-// via SharedStoreDisplay, which deliberately suppresses the owner
-// tenant's store name and engine type so cross-tenant viewers cannot
-// correlate the owner's store inventory from KB responses alone.
 func (h *KnowledgeBaseHandler) batchResolveKBStoreViews(
 	ctx context.Context, kbs []*types.KnowledgeBase, callerTenantID uint64,
 ) map[string]types.StoreDisplay {
@@ -363,9 +299,6 @@ func (h *KnowledgeBaseHandler) HybridSearch(c *gin.Context) {
 		return
 	}
 
-	// Execute hybrid search. Without a rerank object this is the raw recall
-	// primitive it has always been; with one, the response carries meta.
-	// Note: For shared KBs, the service uses effectiveTenantID internally via context
 	var retrieval *types.RetrievalResult
 	if req.Rerank != nil {
 		retrieval, err = h.service.HybridSearchWithRerank(c.Request.Context(), id, req)
@@ -469,16 +402,11 @@ func (h *KnowledgeBaseHandler) CreateKnowledgeBase(c *gin.Context) {
 	})
 }
 
-// validateAndGetKnowledgeBase validates request parameters and retrieves the knowledge base.
-// Enforces per-API-key KB scope before tenant/share/agent resolution.
-// Returns the knowledge base, knowledge base ID, effective tenant ID for embedding, permission level, and any errors encountered
-// For owned KBs, effectiveTenantID is the caller's tenant ID
-// For shared KBs, effectiveTenantID is the source tenant ID (owner's tenant)
 func (h *KnowledgeBaseHandler) validateAndGetKnowledgeBase(
 	c *gin.Context,
-) (*types.KnowledgeBase, string, uint64, types.OrgMemberRole, error) {
+) (*types.KnowledgeBase, string, uint64, types.KBPermission, error) {
 	id := secutils.SanitizeForLog(c.Param("id"))
-	grant, err := resolveHandlerKBAccess(c, id, h.service, h.kbShareService, h.agentShareService)
+	grant, err := resolveHandlerKBAccess(c, id, h.service)
 	if err != nil {
 		return nil, id, 0, "", err
 	}
@@ -487,12 +415,11 @@ func (h *KnowledgeBaseHandler) validateAndGetKnowledgeBase(
 
 // GetKnowledgeBase godoc
 // @Summary      获取知识库详情
-// @Description  根据ID获取知识库详情。当使用共享智能体时，可传 agent_id 以校验该智能体是否有权访问该知识库。
+// @Description 获取当前知识空间中已授权的资源。
 // @Tags         知识库
 // @Accept       json
 // @Produce      json
 // @Param        id         path      string  true   "知识库ID"
-// @Param        agent_id   query     string  false  "共享智能体 ID（用于校验智能体是否有权访问该知识库）"
 // @Success      200  {object}  map[string]interface{}  "知识库详情"
 // @Failure      400  {object}  errors.AppError         "请求参数错误"
 // @Failure      404  {object}  errors.AppError         "知识库不存在"
@@ -522,11 +449,10 @@ func (h *KnowledgeBaseHandler) GetKnowledgeBase(c *gin.Context) {
 
 // ListKnowledgeBases godoc
 // @Summary      获取知识库列表
-// @Description  获取当前空间的所有知识库；或当传入 agent_id（共享智能体）时，校验权限后返回该智能体配置的知识库范围（用于 @ 提及）
+// @Description 获取当前知识空间中已授权的资源。
 // @Tags         知识库
 // @Accept       json
 // @Produce      json
-// @Param        agent_id  query     string  false  "共享智能体 ID（传入时返回该智能体可用的知识库）"
 // @Success      200  {object}  map[string]interface{}  "知识库列表"
 // @Failure      500  {object}  errors.AppError         "服务器错误"
 // @Security     Bearer
@@ -534,35 +460,6 @@ func (h *KnowledgeBaseHandler) GetKnowledgeBase(c *gin.Context) {
 // @Router       /knowledge-bases [get]
 func (h *KnowledgeBaseHandler) ListKnowledgeBases(c *gin.Context) {
 	ctx := c.Request.Context()
-
-	agentID := c.Query("agent_id")
-	if agentID != "" {
-		agent, err := resolveSharedAgentForRequest(c, agentID, h.agentShareService)
-		if err != nil {
-			_ = c.Error(err)
-			return
-		}
-		currentTenantID := middleware.KBAccessRequest(c).Caller.TenantID
-		scope := types.NewSharedAgentKBScope(agent)
-		if scope.IsEmpty() {
-			c.JSON(http.StatusOK, gin.H{"success": true, "data": []interface{}{}})
-			return
-		}
-		kbs, err := h.service.ListKnowledgeBasesByTenantID(ctx, agent.TenantID)
-		if err != nil {
-			logger.ErrorWithFields(ctx, err, nil)
-			c.Error(apperrors.NewInternalServerError(err.Error()))
-			return
-		}
-		kbs = filterKnowledgeBasesForSharedAgent(kbs, agent)
-		kbs = filterKnowledgeBasesForAPIKeyScope(ctx, kbs)
-
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"data":    h.buildKBListResponse(ctx, kbs, currentTenantID),
-		})
-		return
-	}
 
 	// Get all knowledge bases for this tenant
 	kbs, err := h.service.ListKnowledgeBases(ctx)
@@ -600,23 +497,6 @@ func (h *KnowledgeBaseHandler) ListKnowledgeBases(c *gin.Context) {
 	kbs = filterKnowledgeBasesForAPIKeyScope(ctx, kbs)
 
 	// Get share counts for all knowledge bases
-	if len(kbs) > 0 && h.kbShareService != nil {
-		kbIDs := make([]string, len(kbs))
-		for i, kb := range kbs {
-			kbIDs[i] = kb.ID
-		}
-
-		shareCounts, err := h.kbShareService.CountSharesByKnowledgeBaseIDs(ctx, kbIDs)
-		if err != nil {
-			logger.Warnf(ctx, "Failed to get share counts: %v", err)
-		} else {
-			for _, kb := range kbs {
-				if count, ok := shareCounts[kb.ID]; ok {
-					kb.ShareCount = count
-				}
-			}
-		}
-	}
 
 	// 批量回填 creator_name，让前端列表能区分「我创建」与「同空间其他成员创建」。
 	// 仅在 list 接口里回填，详情 / 编辑场景不依赖这个字段；解析失败（用户已删除、
@@ -768,7 +648,7 @@ func (h *KnowledgeBaseHandler) UpdateKnowledgeBase(c *gin.Context) {
 	}
 
 	// Only admin/editor can update knowledge base
-	if permission != types.OrgRoleAdmin && permission != types.OrgRoleEditor {
+	if permission != types.KBPermissionAdmin && permission != types.KBPermissionWrite {
 		c.Error(apperrors.NewForbiddenError("No permission to update knowledge base"))
 		return
 	}
@@ -846,7 +726,7 @@ func (h *KnowledgeBaseHandler) GenerateKnowledgeBaseProfile(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	if permission != types.OrgRoleAdmin && permission != types.OrgRoleEditor {
+	if permission != types.KBPermissionAdmin && permission != types.KBPermissionWrite {
 		_ = c.Error(apperrors.NewForbiddenError("No permission to update knowledge base"))
 		return
 	}
@@ -901,7 +781,7 @@ func (h *KnowledgeBaseHandler) DeleteKnowledgeBase(c *gin.Context) {
 
 	// Only owner (admin with matching tenant) can delete knowledge base
 	tenantID, _ := c.Get(types.TenantIDContextKey.String())
-	if kb.TenantID != tenantID.(uint64) || permission != types.OrgRoleAdmin {
+	if kb.TenantID != tenantID.(uint64) || permission != types.KBPermissionAdmin {
 		c.Error(apperrors.NewForbiddenError("Only knowledge base owner can delete"))
 		return
 	}
@@ -972,7 +852,7 @@ func (h *KnowledgeBaseHandler) CopyKnowledgeBase(c *gin.Context) {
 		return
 	}
 	tenantID := caller.TenantID
-	sourceGrant, err := resolveHandlerKBAccessFor(c, req.SourceID, h.service, nil, nil, types.OrgRoleViewer)
+	sourceGrant, err := resolveHandlerKBAccessFor(c, req.SourceID, h.service, types.KBPermissionRead)
 	if err != nil {
 		c.Error(err)
 		return
@@ -996,7 +876,7 @@ func (h *KnowledgeBaseHandler) CopyKnowledgeBase(c *gin.Context) {
 			targetKB.CreatorID = caller.UserID
 		}
 	} else {
-		targetGrant, err := resolveHandlerKBAccessFor(c, req.TargetID, h.service, nil, nil, types.OrgRoleEditor)
+		targetGrant, err := resolveHandlerKBAccessFor(c, req.TargetID, h.service, types.KBPermissionWrite)
 		if err != nil {
 			_ = c.Error(err)
 			return

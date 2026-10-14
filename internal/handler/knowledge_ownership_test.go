@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBodyKBOwnershipSkipsUnnecessaryLookup(t *testing.T) {
+func TestBodyKBOwnershipSkipsOnlyAuthorizedFastPaths(t *testing.T) {
 	for _, tt := range []struct {
 		name                        string
 		role                        types.TenantRole
@@ -26,7 +26,7 @@ func TestBodyKBOwnershipSkipsUnnecessaryLookup(t *testing.T) {
 		{name: "owner", role: types.TenantRoleOwner},
 		{name: "API key", role: types.TenantRoleViewer, apiKey: true},
 		{name: "cross tenant superuser", role: types.TenantRoleViewer, superuser: true},
-		{name: "RBAC disabled", role: types.TenantRoleContributor, disabled: true},
+		{name: "legacy RBAC flag still checks ownership", role: types.TenantRoleContributor, disabled: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			c := newKBLookupCtx(t, 1, "kb")
@@ -44,16 +44,28 @@ func TestBodyKBOwnershipSkipsUnnecessaryLookup(t *testing.T) {
 			}
 			c.Request = c.Request.WithContext(ctx)
 			enabled := !tt.disabled
+			calls := 0
 			h := &KnowledgeHandler{
 				cfg: &config.Config{
 					Tenant: &config.TenantConfig{EnableRBAC: &enabled, EnableCrossTenantAccess: tt.superuser},
 				},
 				kbService: &stubKBService{get: func(context.Context, string) (*types.KnowledgeBase, error) {
-					t.Fatal("body-carried KB ownership must be looked up lazily")
+					calls++
+					if tt.disabled {
+						return &types.KnowledgeBase{ID: "kb", TenantID: 1, CreatorID: "other"}, nil
+					}
+					t.Fatal("authorized fast paths must not perform ownership lookup")
 					return nil, stderrors.New("unavailable")
 				}},
 			}
-			require.NoError(t, h.requireKBOwnershipOrAdmin(c, "kb"))
+			err := h.requireKBOwnershipOrAdmin(c, "kb")
+			if tt.disabled {
+				require.Error(t, err)
+				require.Equal(t, 1, calls)
+			} else {
+				require.NoError(t, err)
+				require.Zero(t, calls)
+			}
 		})
 	}
 }

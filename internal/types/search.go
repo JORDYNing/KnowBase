@@ -28,9 +28,7 @@ type SearchTarget struct {
 	Type SearchTargetType `json:"type"`
 	// KnowledgeBaseID is the ID of the knowledge base to search
 	KnowledgeBaseID string `json:"knowledge_base_id"`
-	// TenantID is the tenant ID that owns this knowledge base
-	// Required for cross-tenant shared KB queries
-	TenantID uint64 `json:"tenant_id"`
+	TenantID        uint64 `json:"tenant_id"`
 	// KnowledgeIDs is the list of specific knowledge IDs to search within the knowledge base
 	// Only used when Type is SearchTargetTypeKnowledge
 	KnowledgeIDs []string `json:"knowledge_ids,omitempty"`

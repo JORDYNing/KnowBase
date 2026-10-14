@@ -44,18 +44,15 @@ func (h *Handler) UploadTemporaryDocument(c *gin.Context) {
 		c.Error(apperrors.NewBadRequestError(parseErr.Error()))
 		return
 	}
-	agent, resourceTenantID, _ := h.resolveAgent(ctx, c, c.PostForm("agent_id"), sourceTenantID)
+	agent, resourceTenantID := h.resolveAgent(ctx, c, c.PostForm("agent_id"), sourceTenantID)
 	if sourceTenantID != 0 && agent == nil {
-		c.Error(apperrors.NewNotFoundError("Shared agent not found"))
+		c.Error(apperrors.NewNotFoundError("Agent not found"))
 		return
 	}
 	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(fileHeader.Filename)), ".")
 	options := types.TemporaryDocumentCreateOptions{ParserEngine: strings.TrimSpace(c.PostForm("parser_engine"))}
 	if agent != nil {
 		options.ResourceTenantID = resourceTenantID
-		// A shared agent parses in its owner's workspace, with the parser
-		// engines (and credentials) configured there: only the agent's own
-		// rules may pick one, not the caller.
 		if resourceTenantID != 0 && resourceTenantID != c.GetUint64(types.TenantIDContextKey.String()) {
 			options.ParserEngine = ""
 		}

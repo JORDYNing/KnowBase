@@ -136,7 +136,7 @@ type graphScopeKnowledgeService struct {
 	scopeKnowledgeService
 }
 
-func (*graphScopeKnowledgeService) GetKnowledgeBatchWithSharedAccess(
+func (*graphScopeKnowledgeService) GetAuthorizedKnowledgeBatch(
 	_ context.Context, _ uint64, ids []string,
 ) ([]*types.Knowledge, error) {
 	var documents []*types.Knowledge

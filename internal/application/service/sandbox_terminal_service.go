@@ -104,9 +104,6 @@ func (s *SandboxTerminalService) resolveSessionManager(
 	if pin.IsZero() {
 		return nil, SandboxPin{}, sandbox.ErrNoLiveSessionSandbox
 	}
-	// The workspace comes from the pin, not from the request: a shared agent's
-	// sandbox lives on its owner's config, and this call runs from a panel
-	// open, where the request tenant is the session owner.
 	sessionTenantID, _ := types.TenantIDFromContext(ctx)
 	mgr, err := resolveTenantSandboxForConfig(
 		ctx, s.resolver, s.fallback, pin.TenantOr(sessionTenantID), pin.ConfigID, s.policy,
@@ -120,27 +117,6 @@ func (s *SandboxTerminalService) resolveSessionManager(
 	return mgr, pin, nil
 }
 
-// EnsureSessionTerminal opens a PTY on the session's sandbox, provisioning
-// one when the session has none and the caller supplies a sandbox config ID.
-//
-// Only call this for a confirmed user action. It creates and bills real
-// infrastructure, so the lookup-only OpenSessionTerminal is what a page load
-// or a background reconnect must use.
-//
-// Provisioning reuses the exact chat-flow path — the resolved agent's sandbox
-// config, the workspace kill switch, and the pin claim in
-// resolveSandboxForExecution — so a terminal-created sandbox is
-// indistinguishable from one created by a conversation turn. The WebSocket
-// handler must resolve the agent the same way a chat turn does (own agent
-// or shared agent from another workspace) and pass that agent's config AND
-// the workspace that owns it here: a shared agent's config does not exist in
-// the caller's own workspace.
-// A no-op shell command drives the lazy creation, which also seeds the
-// workspace layout.
-//
-// With a zero provision pin the call stays lookup-only and reports
-// sandbox.ErrNoLiveSessionSandbox, which the WebSocket handler maps onto
-// the SANDBOX_NOT_BOUND guidance frame.
 func (s *SandboxTerminalService) EnsureSessionTerminal(
 	ctx context.Context,
 	sessionID string,
@@ -173,10 +149,6 @@ func (s *SandboxTerminalService) EnsureSessionTerminal(
 		return nil, err
 	}
 
-	// provision.TenantID owns provision.ConfigID; for a shared agent that is
-	// the lending workspace, which the WebSocket handler resolved alongside the
-	// config. Falling back to the request tenant keeps own-agent callers (and
-	// any caller that has no agent context) on their own workspace.
 	sessionTenantID, _ := types.TenantIDFromContext(ctx)
 	mgr, _, err = resolveSandboxForExecution(
 		ctx, s.resolver, s.fallback, s.pinner,

@@ -12,8 +12,6 @@ const (
 	KBGrantsContextKey ContextKey = "ResourceKBGrants"
 	// KBTransferContextKey carries one admitted resource pair.
 	KBTransferContextKey ContextKey = "ResourceKBTransfer"
-	// SharedAgentGrantContextKey carries an authorized agent read scope.
-	SharedAgentGrantContextKey ContextKey = "ResourceSharedAgentGrant"
 	// TenantInfoContextKey is the context key for tenant information
 	TenantInfoContextKey ContextKey = "TenantInfo"
 	// RequestIDContextKey is the context key for request ID
@@ -34,26 +32,12 @@ const (
 	// TenantRoleContextKey is the context key for the caller's TenantRole
 	// in the currently active tenant (loaded by the auth middleware from
 	// the tenant_members table). See TenantRoleFromContext.
-	TenantRoleContextKey ContextKey = "TenantRole"
-	// SessionTenantIDContextKey is the context key for session owner's tenant ID.
-	// When set (e.g. in pipeline with shared agent), session/message lookups use this instead of TenantIDContextKey.
+	TenantRoleContextKey      ContextKey = "TenantRole"
 	SessionTenantIDContextKey ContextKey = "SessionTenantID"
 	// SessionIDContextKey carries the current session ID through the chat pipeline
 	// so that stateful sandbox backends (notably CubeSandbox) can route script
 	// execution to the persistent, per-session MicroVM instance.
-	SessionIDContextKey ContextKey = "SessionID"
-	// SandboxTenantIDContextKey carries the tenant that owns the session whose
-	// sandbox is being addressed, which is NOT always the tenant in
-	// TenantIDContextKey: a shared agent runs under the agent owner's tenant so
-	// that models/KBs/named sandbox configs resolve in the sharing workspace.
-	//
-	// The session→sandbox binding must stay keyed by the session owner instead,
-	// because session deletion tears the sandbox down from a plain HTTP request
-	// that only ever knows the session's own tenant. Keying the binding on the
-	// borrowed tenant would leave that teardown looking up a key nobody wrote,
-	// abandoning a paused MicroVM that keeps billing. It is deliberately a
-	// distinct key from SessionTenantIDContextKey, which also re-scopes
-	// session/message repository lookups. See SandboxTenantIDFromContext.
+	SessionIDContextKey       ContextKey = "SessionID"
 	SandboxTenantIDContextKey ContextKey = "SandboxTenantID"
 	// EmbedQueryContextKey marks an embedding call as a search query; see
 	// WithEmbedQuery.

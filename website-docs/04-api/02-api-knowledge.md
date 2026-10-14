@@ -2,7 +2,7 @@
 
 创建知识库，导入与管理文档，并查询处理进度、复制或移动内容。
 
-权限速记：读路由为 Viewer+ 且需对 KB 有 read 权限（自有/组织共享/共享 Agent 可见）；写路由为“KB 创建者 OR Admin+”且需 write 权限。API key：读需 `retrieve`，内容写需 `ingest`，KB 生命周期需 `manage_kbs`（均可被 full-access 覆盖），并受 KB 白名单约束。
+权限速记：读路由为 Viewer+ 且需对 KB 有 read 权限（仅当前授权空间）；写路由为“KB 创建者 OR Admin+”且需 write 权限。API key：读需 `retrieve`，内容写需 `ingest`，KB 生命周期需 `manage_kbs`（均可被 full-access 覆盖），并受 KB 白名单约束。
 
 分块、标签与分块预览接口（`/chunks`、`/knowledge-bases/:id/tags`、`/chunker/preview`）在[分块与标签](./02-api-chunks.md)。
 
@@ -72,8 +72,6 @@ curl -X PUT "$BASE/api/v1/knowledge-bases/kb-1" \
 
 | 查询参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `agent_id` | string | 否 | 过滤某共享 Agent 可见的 KB |
-| `agent_source_tenant_id` | uint64 | 否 | 同名 Agent 被多个空间共享时，指定来源空间；取值会与共享关系校验，非法值直接 400 |
 | `creator` | string | 否 | `mine` / `others` |
 
 响应：200 `{"success":true,"data":[KnowledgeBase],"total","page","page_size"}`
@@ -84,7 +82,7 @@ curl $BASE/api/v1/knowledge-bases -H "X-API-Key: $API_KEY"
 
 ### GET /api/v1/knowledge-bases/:id
 
-用途：知识库详情（共享 KB 携带 `my_permission`）。权限：Viewer+，KB read。查询参数：`agent_id`（可选）。
+用途：当前空间知识库详情。权限：Viewer+，KB read。
 
 响应：200 `{"success":true,"data":{KnowledgeBase}}`
 
@@ -101,7 +99,7 @@ curl $BASE/api/v1/knowledge-bases/kb-1 -H "Authorization: Bearer $TOKEN"
 | `name` | string | 是（`binding:"required"`） | 名称 |
 | `description` | string | 否 | 描述 |
 | `config` | object | 否 | 局部配置更新：`chunking_config`、`image_processing_config`、`faq_config`、`wiki_config`、`auto_tag_config`、`profile_config`、`indexing_strategy`。`image_processing_config` 不传则保持不变，传了则整体替换（未带的 `image_vector_enabled` 等字段回到 false） |
-| `vlm_config` | object | 否 | 多模态配置，整体替换：只取 `enabled`、`model_id`（须为 VLLM 模型）、`description_language`、`custom_instructions`（≤4000 字），未传的字段按空值处理；不想改就不要传。共享库需所有者空间或共享 admin 权限（editor 返回 403）。旧版内联字段 `model_name`/`base_url`/`api_key`/`interface_type` 不会被写入：启用托管 `model_id` 或关闭时会清空已存的旧版配置，但纯旧版库（未存 `model_id`，只存了 `model_name`/`base_url`）原样回传 GET 结果（`enabled=false` 且 `model_name`/`base_url` 与存储一致）视为不改；其余库 `enabled=true` 却缺 `model_id` 返回 400 |
+| `vlm_config` | object | 否 | 多模态配置，整体替换：只取 `enabled`、`model_id`（须为 VLLM 模型）、`description_language`、`custom_instructions`（≤4000 字），未传的字段按空值处理；不想改就不要传。配置修改须满足当前空间的 KB 写权限。旧版内联字段 `model_name`/`base_url`/`api_key`/`interface_type` 不会被写入：启用托管 `model_id` 或关闭时会清空已存的旧版配置，但纯旧版库（未存 `model_id`，只存了 `model_name`/`base_url`）原样回传 GET 结果（`enabled=false` 且 `model_name`/`base_url` 与存储一致）视为不改；其余库 `enabled=true` 却缺 `model_id` 返回 400 |
 
 响应：200 `{"success":true,"data":{KnowledgeBase}}`
 
@@ -112,7 +110,7 @@ curl -X PUT $BASE/api/v1/knowledge-bases/kb-1 -H "Authorization: Bearer $TOKEN" 
 
 ### DELETE /api/v1/knowledge-bases/:id
 
-用途：删除知识库（锁定为属主空间 + Admin；共享 editor 不可删）。权限：创建者 OR Admin+，KB write；API key `manage_kbs`/full。
+用途：删除知识库（仅当前空间）。权限：创建者 OR Admin+，KB write；API key `manage_kbs`/full。
 
 响应：200 `{"success":true,"message":"Knowledge base deleted successfully"}`
 
@@ -223,7 +221,7 @@ curl $BASE/api/v1/knowledge-bases/kb-1/move-targets -H "Authorization: Bearer $T
 
 ### GET /api/v1/knowledge-bases/:id/files
 
-用途：KB 范围文件代理（渲染共享 KB 内容中的图片；上下文 tenant 已被重写为 KB 属主）。权限：Viewer+，KB read；KB 受限 key 拒绝，全空间 `retrieve`/full key 放行。注册于 `serveKBScopedFiles`（`internal/router/files.go`）。
+用途：KB 范围文件代理（渲染当前空间知识库内容中的图片，并校验文件绑定与归属）。权限：Viewer+，KB read；KB 受限 key 拒绝，全空间 `retrieve`/full key 放行。注册于 `serveKBScopedFiles`（`internal/router/files.go`）。
 
 | 查询参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -341,7 +339,7 @@ curl "$BASE/api/v1/knowledge-bases/kb-1/knowledge?page=1&parse_status=completed"
 
 ### POST /api/v1/knowledge-bases/:id/knowledge/batch-download
 
-用途：把同一知识库中的多个文档原始文件打包为 ZIP 下载。权限与单文件下载相同：Contributor+ 且 KB write（组织共享 Viewer 不可下载）；API key `retrieve`/full。
+用途：把同一知识库中的多个文档原始文件打包为 ZIP 下载。权限与单文件下载相同：Contributor+ 且 KB write（Viewer 不可下载）；API key `retrieve`/full。
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -407,8 +405,6 @@ curl -X DELETE $BASE/api/v1/knowledge-bases/kb-1/knowledge -H "Authorization: Be
 | --- | --- | --- | --- |
 | `ids` | []string | 是 | 知识 ID（可重复传参或逗号分隔） |
 | `kb_id` | string | 否 | 限定 KB |
-| `agent_id` | string | 否 | 共享 Agent 范围 |
-| `agent_source_tenant_id` | uint64 | 否 | 共享 Agent 的来源空间选择器，与共享关系校验 |
 
 响应：200 `{"success":true,"data":[Knowledge]}`。处于 `pending`/`processing`/`finalizing` 的知识额外带 `last_activity_at`（RFC3339），取行的 `updated_at` 与该知识所有 span 最近一次写入中较晚的一个。超过 20 分钟无进展的知识再带 `stall_state`：`queued` 表示仍有任务在 asynq 队列或 Wiki 持久队列中等待（积压），`stalled` 表示已无任务可推进它（疑似卡住）。判定与 housekeeping 的积压判定相同；队列侧是一次全队列扫描，所有请求共享、缓存 60 秒。探测失败时不返回 `stall_state`，前端按普通解析中显示。
 
@@ -516,7 +512,7 @@ curl -X POST $BASE/api/v1/knowledge/k-1/cancel-parse -H "Authorization: Bearer $
 
 ### GET /api/v1/knowledge/:id/download
 
-用途：下载原始源文件（比预览更严格：Contributor+ 且 KB write；组织共享 Viewer 不可下载源文件）。API key `retrieve`/full。
+用途：下载原始源文件（比预览更严格：Contributor+ 且 KB write；Viewer 不可下载源文件）。API key `retrieve`/full。
 
 响应：200 二进制流（`application/octet-stream`）。
 
@@ -555,8 +551,6 @@ curl -X PUT $BASE/api/v1/knowledge/image/k-1/c-1 -H "Authorization: Bearer $TOKE
 | `file_types` | string | 否 | 逗号分隔的扩展名过滤，如 `csv,xlsx` |
 | `offset` / `limit` | int | 否 | 分页；`limit` 默认 20，范围 1～100 |
 | `recent` | bool | 否 | 关键字为空时返回最近文件 |
-| `agent_id` | string | 否 | 共享 Agent 范围 |
-| `agent_source_tenant_id` | uint64 | 否 | 共享 Agent 的来源空间选择器，与共享关系校验 |
 
 响应：200 `{"success":true,"data":[Knowledge],"has_more":bool,"total":N}`
 

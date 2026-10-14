@@ -23,9 +23,12 @@ type ReconcilableSettings = {
   enableMemory?: unknown;
   isAgentEnabled: boolean;
   selectedAgentId?: string;
+  selectedAgentSourceTenantId?: unknown;
 };
 
 function reconcileLoadedSettings<T extends ReconcilableSettings>(loaded: T): T {
+  const removedSourceWorkspace = Object.prototype.hasOwnProperty.call(loaded, "selectedAgentSourceTenantId");
+  delete loaded.selectedAgentSourceTenantId;
   loaded.selectedTags ||= [];
   loaded.selectedMCPServices ||= [];
   loaded.selectedSkills ||= (loaded.selectedTools as string[] | undefined) || [];
@@ -35,7 +38,7 @@ function reconcileLoadedSettings<T extends ReconcilableSettings>(loaded: T): T {
     delete loaded.enableMemory;
   }
   const reconciledAgentMode = reconcileBuiltinAgentMode(loaded);
-  if (removedLegacyMemorySetting || reconciledAgentMode) {
+  if (removedLegacyMemorySetting || reconciledAgentMode || removedSourceWorkspace) {
     safeSetItem(SETTINGS_STORAGE_KEY, JSON.stringify(loaded));
   }
   return loaded;

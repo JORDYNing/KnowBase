@@ -59,23 +59,12 @@ func (s *downloadKBStub) GetKnowledgeBaseByID(context.Context, string) (*types.K
 	return s.kb, nil
 }
 
-type downloadShareStub struct {
-	interfaces.KBShareService
-	permission types.OrgMemberRole
-}
-
-func (s *downloadShareStub) CheckTenantKBPermission(
-	context.Context, string, uint64, types.TenantRole,
-) (types.OrgMemberRole, bool, error) {
-	return s.permission, true, nil
-}
-
 func runBatchDownload(
 	t *testing.T,
 	svc *downloadKnowledgeStub,
 	ids []string,
 	kb *types.KnowledgeBase,
-	share interfaces.KBShareService,
+	share interface{},
 	scope *types.TenantAPIKeyScope,
 ) *httptest.ResponseRecorder {
 	t.Helper()
@@ -95,9 +84,8 @@ func runBatchDownload(
 		c.Next()
 	})
 	h := &KnowledgeHandler{
-		kgService:      svc,
-		kbService:      &downloadKBStub{kb: kb},
-		kbShareService: share,
+		kgService: svc,
+		kbService: &downloadKBStub{kb: kb},
 	}
 	router.POST("/knowledge-bases/:id/knowledge/batch-download", h.BatchDownloadKnowledge)
 	body, err := json.Marshal(BatchDownloadKnowledgeRequest{IDs: ids})
@@ -152,7 +140,7 @@ func TestBatchDownloadKnowledgeRejectsInvalidSelectionsBeforeReading(t *testing.
 		ids    []string
 		item   *types.Knowledge
 		kb     *types.KnowledgeBase
-		share  interfaces.KBShareService
+		share  interface{}
 		scope  *types.TenantAPIKeyScope
 		status int
 	}{
@@ -188,9 +176,9 @@ func TestBatchDownloadKnowledgeRejectsInvalidSelectionsBeforeReading(t *testing.
 			kb:   &types.KnowledgeBase{ID: "kb-1", TenantID: 7},
 		},
 		{
-			name: "共享只读", ids: []string{"a"}, status: 403,
+			name: "外部知识空间", ids: []string{"a"}, status: 403,
 			kb:    &types.KnowledgeBase{ID: "kb-1", TenantID: 8},
-			share: &downloadShareStub{permission: types.OrgRoleViewer},
+			share: nil,
 		},
 		{
 			name: "密钥无此库权限", ids: []string{"a"}, status: 403,
@@ -257,20 +245,6 @@ func TestBatchDownloadKnowledgeSkipsEntriesWithoutOriginalFiles(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, reader.File, 1)
 	require.Equal(t, "keep.txt", reader.File[0].Name)
-	require.Equal(t, []string{"a"}, svc.opened)
-}
-
-func TestBatchDownloadKnowledgeAllowsSharedEditor(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
-	svc := &downloadKnowledgeStub{
-		items:          []*types.Knowledge{{ID: "a", TenantID: 8, KnowledgeBaseID: "kb-1", FilePath: "stored-a"}},
-		names:          map[string]string{"a": "shared.txt"},
-		expectedTenant: 8,
-	}
-	w := runBatchDownload(t, svc, []string{"a"},
-		&types.KnowledgeBase{ID: "kb-1", TenantID: 8},
-		&downloadShareStub{permission: types.OrgRoleEditor}, nil)
-	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 	require.Equal(t, []string{"a"}, svc.opened)
 }
 

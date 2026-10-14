@@ -306,12 +306,12 @@ func TestAPI_PathWithoutSlash(t *testing.T) {
 	}
 }
 
-// withRootHarness wraps `weknora api ...` under a synthetic root cmd that
+// withRootHarness wraps `gamelib api ...` under a synthetic root cmd that
 // registers the global persistent flags (mirrors addGlobalFlags in
 // cmd/root.go). Required because api's NewCmd doesn't register --yes /
 // --format / --jq itself — it inherits them from root in production.
 func withRootHarness(api *cobra.Command, args ...string) *cobra.Command {
-	root := &cobra.Command{Use: "weknora"}
+	root := &cobra.Command{Use: "gamelib"}
 	pf := root.PersistentFlags()
 	pf.BoolP("yes", "y", false, "")
 	pf.String("format", "", "")
@@ -325,7 +325,7 @@ func withRootHarness(api *cobra.Command, args ...string) *cobra.Command {
 }
 
 // TestAPI_DELETE_RequiresConfirmation pins the exit-10 protocol on the
-// escape-hatch DELETE path: agent invokes `weknora api DELETE /...` without
+// escape-hatch DELETE path: agent invokes `gamelib api DELETE /...` without
 // -y/--yes, must get input.confirmation_required + exit 10. Confirmation is
 // enforced in NewCmd.RunE (not runAPI), so the test drives the cobra cmd.
 func TestAPI_DELETE_RequiresConfirmation(t *testing.T) {
@@ -659,7 +659,7 @@ func TestAPI_PaginateServerCapsPageSize(t *testing.T) {
 }
 
 // TestAPI_PUT_RequiresConfirmation pins the exit-10 write gate on the
-// escape-hatch PUT path: `weknora api -X PUT /...` mutates server state the
+// escape-hatch PUT path: `gamelib api -X PUT /...` mutates server state the
 // same way a typed `kb update` does, so it must require -y (exit 10) rather
 // than silently writing. Regression: only DELETE was gated, letting an agent
 // bypass the write-confirmation protocol via raw PUT/PATCH.

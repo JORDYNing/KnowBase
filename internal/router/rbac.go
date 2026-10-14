@@ -22,10 +22,8 @@ import (
 // variants) ask "is the caller the creator of THIS resource OR at
 // least Admin+?".
 //
-// Picking the wrong one is the single most common source of RBAC
-// bugs in this repo (we caught FAQ/Tag, agent share, KB share, and
-// shared-agents/disabled all wired against the wrong axis). Two
-// questions decide it:
+// Match each guard to resource ownership or tenant-wide authority.
+// Two questions decide it:
 //
 // Q1. Does the resource have a creator?
 //
@@ -131,15 +129,13 @@ type rbacGuards struct {
 	chunkKBCreatorFromID middleware.CreatorLookup // chunk routes that address chunks by :id (no knowledge id in URL)
 	wikiKBCreator        middleware.CreatorLookup
 
-	// Services for the KB-access guard (own / org-shared / via shared
-	// agent). Captured here so route lines can reference g.KBAccess()
+	// Services for the current-tenant KB-access guard. Captured here so
+	// route lines can reference g.KBAccess()
 	// without having to plumb the services through every Register*
 	// function.
-	kbService         middleware.KBLookup
-	knowledgeService  middleware.KnowledgeLookup
-	chunkService      middleware.ChunkLookup
-	kbShareService    interfaces.KBShareService
-	agentShareService interfaces.AgentShareService
+	kbService        middleware.KBLookup
+	knowledgeService middleware.KnowledgeLookup
+	chunkService     middleware.ChunkLookup
 
 	// apiKeyAuthorizer is the single source of truth for which routes an
 	// X-API-Key principal may call. Routes opt in via the apiKeyGroup
@@ -160,8 +156,6 @@ func newRBACGuards(
 	kbService interfaces.KnowledgeBaseService,
 	knowledgeService interfaces.KnowledgeService,
 	chunkService interfaces.ChunkService,
-	kbShareService interfaces.KBShareService,
-	agentShareService interfaces.AgentShareService,
 ) *rbacGuards {
 	g := &rbacGuards{cfg: cfg, apiKeyAuthorizer: middleware.NewAPIKeyRouteAuthorizer()}
 	if kbHandler != nil {
@@ -184,8 +178,6 @@ func newRBACGuards(
 	g.kbService = kbService
 	g.knowledgeService = knowledgeService
 	g.chunkService = chunkService
-	g.kbShareService = kbShareService
-	g.agentShareService = agentShareService
 	return g
 }
 
@@ -322,10 +314,6 @@ func apiKeyRunEvaluations(base middleware.APIKeyRoutePolicy) middleware.APIKeyRo
 
 func apiKeyManageMembers(base middleware.APIKeyRoutePolicy) middleware.APIKeyRoutePolicy {
 	return base.WithCapability(types.APIKeyCapabilityManageMembers)
-}
-
-func apiKeyManageSpaces(base middleware.APIKeyRoutePolicy) middleware.APIKeyRoutePolicy {
-	return base.WithCapability(types.APIKeyCapabilityManageSpaces)
 }
 
 func apiKeyManageTenantSettings(base middleware.APIKeyRoutePolicy) middleware.APIKeyRoutePolicy {
@@ -527,53 +515,30 @@ func (g *rbacGuards) PathTenantMatch() gin.HandlerFunc {
 	return middleware.RequirePathTenantMatch(g.cfg)
 }
 
-// KB-access guards — orthogonal to the role-and-ownership matrix
-// above. They answer "can the caller's tenant operate on THIS KB?"
-// taking into account three paths:
-//
-//   1. Own KB                         — full access (Admin)
-//   2. Org-shared KB (Plan 3)         — capped permission
-//   3. Visible via shared agent       — read-only
-//
-// On success the resolved (KB + effective tenant id + permission)
-// tuple is stashed on c.Keys under middleware.KBAccessContextKey AND
-// the request context's tenant ID is rewritten to the effective tenant
-// — so handlers downstream just read tenant the way they always did
-// (types.MustTenantIDFromContext) without knowing whether the KB is
-// owned or shared.
-//
-// These guards replace the per-handler effectiveCtxForKB /
-// validateAndGetKnowledgeBase helpers that used to be re-implemented
-// in chunk.go, faq.go, tag.go, knowledge.go and knowledgebase.go;
-// the share-fallback logic now lives in exactly one place
-// (application/access/knowledgebase.go).
+// KB-access guards are independent of tenant-role and creator checks.
+// They require a server-loaded KB in the authenticated caller's tenant
+// and apply the API-key KB allow-list. The resolved operation grant is
+// stored in middleware.KBAccessContextKey and the request context, so
+// downstream handlers can reuse this exact authorization.
 
-// KBAccessRead gates a KB-scoped read route on the caller having at
-// least Viewer-level access. The agent-share fallback only activates
-// at this level — Editor/Admin reads never go through "I just see it
-// because someone shared an agent". The kbID is read from the gin
-// param named in `param` (typically "id" for /knowledge-bases/:id/...).
+// KBAccessRead grants read access to a KB in the caller's current tenant.
+// The KB ID comes from the named Gin path parameter.
 func (g *rbacGuards) KBAccessRead(param string) gin.HandlerFunc {
 	return middleware.RequireKBAccess(
 		middleware.KBIDFromParam(param),
-		types.OrgRoleViewer,
+		types.KBPermissionRead,
 		g.kbService,
-		g.kbShareService,
-		g.agentShareService,
 		g.cfg,
 	)
 }
 
-// KBAccessWrite gates a KB-scoped mutating route on the caller having
-// at least Editor-level access (own KB or org-shared with editor).
+// KBAccessWrite grants one write operation on a KB in the caller's tenant.
 // Used by FAQ upsert, tag CRUD, chunk update/delete, etc.
 func (g *rbacGuards) KBAccessWrite(param string) gin.HandlerFunc {
 	return middleware.RequireKBAccess(
 		middleware.KBIDFromParam(param),
-		types.OrgRoleEditor,
+		types.KBPermissionWrite,
 		g.kbService,
-		g.kbShareService,
-		g.agentShareService,
 		g.cfg,
 	)
 }
@@ -585,10 +550,8 @@ func (g *rbacGuards) KBAccessWrite(param string) gin.HandlerFunc {
 func (g *rbacGuards) KBAccessReadFromKnowledgeIDParam(param string) gin.HandlerFunc {
 	return middleware.RequireKBAccess(
 		middleware.KBIDFromKnowledgeIDParam(param, g.knowledgeService),
-		types.OrgRoleViewer,
+		types.KBPermissionRead,
 		g.kbService,
-		g.kbShareService,
-		g.agentShareService,
 		g.cfg,
 	)
 }
@@ -598,10 +561,8 @@ func (g *rbacGuards) KBAccessReadFromKnowledgeIDParam(param string) gin.HandlerF
 func (g *rbacGuards) KBAccessWriteFromKnowledgeIDParam(param string) gin.HandlerFunc {
 	return middleware.RequireKBAccess(
 		middleware.KBIDFromKnowledgeIDParam(param, g.knowledgeService),
-		types.OrgRoleEditor,
+		types.KBPermissionWrite,
 		g.kbService,
-		g.kbShareService,
-		g.agentShareService,
 		g.cfg,
 	)
 }
@@ -612,10 +573,8 @@ func (g *rbacGuards) KBAccessWriteFromKnowledgeIDParam(param string) gin.Handler
 func (g *rbacGuards) KBAccessReadFromChunkIDParam(param string) gin.HandlerFunc {
 	return middleware.RequireKBAccess(
 		middleware.KBIDFromChunkIDParam(param, g.chunkService),
-		types.OrgRoleViewer,
+		types.KBPermissionRead,
 		g.kbService,
-		g.kbShareService,
-		g.agentShareService,
 		g.cfg,
 	)
 }
@@ -626,10 +585,8 @@ func (g *rbacGuards) KBAccessReadFromChunkIDParam(param string) gin.HandlerFunc 
 func (g *rbacGuards) KBAccessWriteFromChunkIDParam(param string) gin.HandlerFunc {
 	return middleware.RequireKBAccess(
 		middleware.KBIDFromChunkIDParam(param, g.chunkService),
-		types.OrgRoleEditor,
+		types.KBPermissionWrite,
 		g.kbService,
-		g.kbShareService,
-		g.agentShareService,
 		g.cfg,
 	)
 }

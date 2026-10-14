@@ -29,7 +29,6 @@ Gamelib 采用"主服务 + 前端 + 文档解析微服务"的三进程核心架�
 | `qdrant` / `milvus` / `weaviate` | 各自同名 profile | 独立向量库（`RETRIEVE_DRIVER` 切换） |
 | `doris-fe` + `doris-be` | `doris` | Apache Doris 4.1 检索引擎（FE MySQL 9030 / FE HTTP 8030 Stream Load / BE 8040） |
 | `odl-hybrid` | `odl-hybrid` | OpenDataLoader PDF 混合解析后端（docreader 通过 HTTP `:5002` 调用） |
-| `dex` | `dex` / `full` | OIDC 测试用 IdP（配合 `OIDC_AUTH_ENABLE`） |
 | `langfuse-*`（web/worker/clickhouse/minio/db-init） | `langfuse` | 自建 LLM 可观测栈，复用 Gamelib 的 postgres（新建 `langfuse` 库）与 redis（DB 1） |
 
 此外，Go 后端还可直连未在 compose 内的外部引擎：Elasticsearch v7/v8、OpenSearch、腾讯云 VectorDB，以及 8 种对象存储（local/MinIO/COS/TOS/S3/OSS/KS3/OBS）。
@@ -52,7 +51,7 @@ Gamelib 采用"主服务 + 前端 + 文档解析微服务"的三进程核心架�
 | 依赖注入 | `go.uber.org/dig` | v1.19.0（构造函数注入，见后端设计篇） |
 | 异步任务 | `github.com/hibiken/asynq` | v0.26.0（基于 Redis，6 个 worker 池） |
 | 缓存/队列 | `github.com/redis/go-redis/v9` | v9.14.1 |
-| 认证 | `github.com/golang-jwt/jwt/v5` + OIDC | JWT Bearer / X-API-Key / OIDC 三态 |
+| 认证 | `github.com/golang-jwt/jwt/v5` + 飞书 OAuth | 飞书人类登录、JWT Bearer 与 X-API-Key 机器访问 |
 | 数据库迁移 | `github.com/golang-migrate/migrate/v4` | `migrations/versioned/*.up.sql`，启动时 `AUTO_MIGRATE` 自动执行 |
 | 日志 | `github.com/sirupsen/logrus` + lumberjack 轮转 | 自研 formatter，request_id 贯穿 |
 | 配置 | `github.com/spf13/viper` + `config/config.yaml` + 环境变量 | — |
@@ -187,7 +186,7 @@ sequenceDiagram
 | `internal/` | Go 后端全部业务代码（分层结构见后端设计篇）：`handler`、`application/service`、`application/repository`、`container`（DI）、`router`、`middleware`、`types`、`agent`、`im`、`mcp`、`stream`、`sandbox` 等 |
 | `frontend/` | Vue3 + Vite + TDesign 的 Web 前端，构建产物由 NGINX 或 Lite 模式内嵌托管 |
 | `docreader/` | Python gRPC 文档解析微服务：`main.py` 服务端入口、`parser/` 25+ 解析器、`splitter/` 分割器、`proto/` 协议定义、独立 `Dockerfile.docreader` 构建 |
-| `cli/` | `weknora` 命令行工具：知识库、文档、检索、会话、智能体、模型、MCP、技能等资源操作，以及 `doctor` 诊断，见 [CLI](../05-clients/02-cli.md) |
+| `cli/` | `gamelib` 命令行工具：知识库、文档、检索、会话、智能体、模型、MCP、技能等资源操作，以及 `doctor` 诊断，见 [CLI](../05-clients/02-cli.md) |
 | `client/` | Go SDK：以 HTTP 客户端形式封装 Gamelib API，供二次开发集成 |
 | `mcp-server/` | Python 实现的 MCP Server（`weknora_mcp_server.py`），把 Gamelib API 暴露为 MCP 工具给 Claude 等 MCP 客户端 |
 | `miniprogram/` | 微信小程序客户端（WXML/WXSS/JS） |
@@ -200,7 +199,7 @@ sequenceDiagram
 | `dataset/` | 评估用 QA 数据集及生成脚本 |
 | `scripts/` | 构建/启动/迁移辅助脚本（如 `start_all.sh`；`build_frontend_dist.sh` 供 Lite / 桌面打包，UI 镜像由 `frontend/Dockerfile` 多阶段构建） |
 | `tests/`、`testdata/` | 集成测试与测试数据 |
-| `misc/` | 杂项（如 `dex-config.yaml` OIDC 测试配置） |
+| `misc/` | 历史兼容配置（如已停用的 `dex-config.yaml`），不能用于开启其他登录方式 |
 | `packages/` | 独立发布的集成包，如 DeepSeek Harness 插件 `packages/dsh-weknora`，见 [DeepSeek Harness](../05-clients/08-deepseek-harness.md) |
 | `docs/` | 停止维护的旧文档；暂存 Swagger 生成包、发布资源和历史图片 |
 

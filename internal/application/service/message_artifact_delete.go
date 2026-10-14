@@ -38,9 +38,6 @@ func (s *messageService) DeleteSessionArtifact(
 		return nil, errors.NewBadRequestError("session_id, message_id and index are required")
 	}
 
-	// Ownership: the session must belong to the caller. Deleting is not covered
-	// by the shared-agent read access the download endpoint honours — a viewer
-	// of someone else's shared session may fetch a file, not destroy it.
 	tenantID := types.MustTenantIDFromContext(ctx)
 	if _, err := s.sessionRepo.Get(ctx, tenantID, sessionUserIDForLookup(ctx), req.SessionID); err != nil {
 		return nil, err

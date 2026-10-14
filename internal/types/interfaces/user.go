@@ -166,3 +166,11 @@ type AuthTokenRepository interface {
 	// RevokeTokensByUserID revokes all tokens for a user
 	RevokeTokensByUserID(ctx context.Context, userID string) error
 }
+
+// FeishuIdentityRepository isolates atomic provider binding and profile writes
+// from whole-user saves, so concurrent logins cannot overwrite a binding or
+// roll back a membership/default-tenant update.
+type FeishuIdentityRepository interface {
+	BindFeishuIdentity(ctx context.Context, userID, openID string) (*types.User, error)
+	UpdateFeishuAvatar(ctx context.Context, userID, openID, avatar string) error
+}

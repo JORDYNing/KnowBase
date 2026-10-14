@@ -1,4 +1,4 @@
-// Package profilecmd holds the `weknora profile` command tree
+// Package profilecmd holds the `gamelib profile` command tree
 // (list / add / remove / use).
 //
 // Package name `profilecmd` (not `profile`) to keep the pattern consistent
@@ -12,7 +12,7 @@ import (
 	"github.com/Tencent/WeKnora/cli/internal/cmdutil"
 )
 
-// NewCmd builds the `weknora profile` parent command.
+// NewCmd builds the `gamelib profile` parent command.
 func NewCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "profile",

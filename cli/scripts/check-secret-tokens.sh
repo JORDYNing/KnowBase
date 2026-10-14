@@ -4,7 +4,7 @@
 # API key or JWT most easily gets pasted by accident (copying a working
 # session into a how-to). Same intent as a gitleaks/doc-token pre-commit scan.
 #
-# Heuristic, low false-positive: a real WeKnora API key is `sk-` followed by a
+# Heuristic, low false-positive: a real Gamelib API key is `sk-` followed by a
 # long high-entropy body that CONTAINS A DIGIT (e.g.
 # sk-bVd4ebLoyn-DKevdkgw527XAakwv4G6Tz6FhgXPlOpBO-Ico); placeholder words like
 # `sk-specific` / `sk-staging` have no digit and are short, so they pass. JWTs
@@ -14,7 +14,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Doc surface to scan (where a pasted live token is the real risk).
-FILES=$(git ls-files 'skills/**/*.md' 'README.md' 'AGENTS.md' 'CHANGELOG.md' 'ROADMAP.md' 2>/dev/null || true)
+FILES=$(git ls-files --cached --others --exclude-standard 'skills/**/*.md' 'README.md' 'AGENTS.md' 'CHANGELOG.md' 'ROADMAP.md')
 [ -z "$FILES" ] && { echo "no doc files to scan"; exit 0; }
 
 # sk- key: prefix + >=24 body chars including at least one digit.
@@ -45,7 +45,7 @@ done
 if [ "$fail" -ne 0 ]; then
   echo
   echo "A real-looking credential is committed in docs. Replace it with a"
-  echo "placeholder (e.g. sk-EXAMPLE / <api-key> / \$(weknora auth token))."
+  echo "placeholder (e.g. sk-EXAMPLE / <api-key> / \$(gamelib auth token))."
   exit 1
 fi
 echo "no committed credentials found in docs"

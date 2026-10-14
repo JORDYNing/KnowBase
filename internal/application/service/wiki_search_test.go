@@ -33,21 +33,6 @@ func (s *wikiSearchKBService) GetKnowledgeBasesByIDsOnly(
 	return out, nil
 }
 
-type wikiSearchShareService struct {
-	interfaces.KBShareService
-	allowed map[string]map[uint64]bool
-	err     error
-}
-
-func (s *wikiSearchShareService) CheckTenantKBPermission(
-	_ context.Context, kbID string, callerTenantID uint64, _ types.TenantRole,
-) (types.OrgMemberRole, bool, error) {
-	if s.err != nil {
-		return "", false, s.err
-	}
-	return types.OrgRoleViewer, s.allowed[kbID][callerTenantID], nil
-}
-
 func makeWikiSearchKB(id string, tenantID uint64) *types.KnowledgeBase {
 	return &types.KnowledgeBase{
 		ID:               id,
@@ -59,14 +44,14 @@ func makeWikiSearchKB(id string, tenantID uint64) *types.KnowledgeBase {
 func setupWikiSearchService(
 	t *testing.T,
 	kbs map[string]*types.KnowledgeBase,
-	share interfaces.KBShareService,
+	_ interface{},
 ) (context.Context, interfaces.WikiPageService, interfaces.WikiPageRepository) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&types.WikiFolder{}, &types.WikiPage{}, &types.WikiPageRevision{}))
 	repo := repository.NewWikiPageRepository(db)
-	svc := NewWikiPageService(repo, nil, &wikiSearchKBService{byID: kbs}, nil, nil, share)
+	svc := NewWikiPageService(repo, nil, &wikiSearchKBService{byID: kbs}, nil, nil)
 	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, uint64(1))
 	return ctx, svc, repo
 }
@@ -130,7 +115,7 @@ func TestSearchPagesAcross_MissingKBIsNotFound(t *testing.T) {
 func TestSearchPagesAcross_ForeignTenantWithoutShareIsNotFound(t *testing.T) {
 	ctx, svc, _ := setupWikiSearchService(t, map[string]*types.KnowledgeBase{
 		"kb-foreign": makeWikiSearchKB("kb-foreign", 99),
-	}, &wikiSearchShareService{})
+	}, nil)
 
 	_, err := svc.SearchPagesAcross(ctx, []string{"kb-foreign"}, "q", 10)
 	require.Error(t, err)
@@ -145,7 +130,7 @@ func TestSearchPagesAcross_ForeignTenantNonWikiWithoutShareIsNotFound(t *testing
 			ID: "kb-foreign-doc", TenantID: 99,
 			IndexingStrategy: types.IndexingStrategy{VectorEnabled: true},
 		},
-	}, &wikiSearchShareService{})
+	}, nil)
 
 	_, err := svc.SearchPagesAcross(ctx, []string{"kb-foreign-doc"}, "q", 10)
 	require.Error(t, err)
@@ -154,33 +139,12 @@ func TestSearchPagesAcross_ForeignTenantNonWikiWithoutShareIsNotFound(t *testing
 	assert.Equal(t, apperrors.ErrNotFound, app.Code)
 }
 
-func TestSearchPagesAcross_ForeignTenantWithShareOK(t *testing.T) {
-	ctx, svc, repo := setupWikiSearchService(t, map[string]*types.KnowledgeBase{
-		"kb-foreign": makeWikiSearchKB("kb-foreign", 99),
-	}, &wikiSearchShareService{
-		allowed: map[string]map[uint64]bool{"kb-foreign": {1: true}},
-	})
-
-	page := &types.WikiPage{
-		ID: "p-shared", TenantID: 99, KnowledgeBaseID: "kb-foreign",
-		Slug: "concept/share", Title: "共享", PageType: types.WikiPageTypeConcept,
-		Status: types.WikiPageStatusPublished, Content: "body", Version: 1,
-		CreatedAt: time.Now(), UpdatedAt: time.Now(),
-	}
-	require.NoError(t, repo.Create(ctx, page))
-
-	pages, err := svc.SearchPagesAcross(ctx, []string{"kb-foreign"}, "共享", 10)
-	require.NoError(t, err)
-	require.Len(t, pages, 1)
-	assert.Equal(t, "p-shared", pages[0].ID)
-}
-
 func TestSearchPagesAcross_RejectsTooManyKBs(t *testing.T) {
 	ids := make([]string, maxWikiSearchKnowledgeBases+1)
 	for i := range ids {
 		ids[i] = fmt.Sprintf("kb-%d", i)
 	}
-	ctx, svc, _ := setupWikiSearchService(t, nil, &wikiSearchShareService{})
+	ctx, svc, _ := setupWikiSearchService(t, nil, nil)
 	_, err := svc.SearchPagesAcross(ctx, ids, "q", 10)
 	require.Error(t, err)
 	app, ok := apperrors.IsAppError(err)

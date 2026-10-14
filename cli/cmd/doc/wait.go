@@ -23,11 +23,11 @@ type WaitOptions struct {
 	Interval time.Duration
 }
 
-// NewCmdWait builds `weknora doc wait <id> [<id>...]`.
+// NewCmdWait builds `gamelib doc wait <id> [<id>...]`.
 //
 // Multi-id behaviour is always wait-all: blocks until every id reaches a
 // terminal state. Use shell composition
-// (`weknora doc wait id1 && weknora doc wait id2`) when fail-fast is
+// (`gamelib doc wait id1 && gamelib doc wait id2`) when fail-fast is
 // desired.
 func NewCmdWait(f *cmdutil.Factory) *cobra.Command {
 	opts := &WaitOptions{}
@@ -46,10 +46,10 @@ Exit codes:
 
 Multi-id is polled concurrently (max 5 parallel; use 'xargs -P' for more).
 For fail-fast semantics, use shell composition:
-  weknora doc wait id1 && weknora doc wait id2 && weknora doc wait id3`,
-		Example: `  weknora doc wait doc_abc
-  weknora doc wait id1 id2 id3 --timeout 20m
-  weknora doc wait id1 id2 --format ndjson`,
+  gamelib doc wait id1 && gamelib doc wait id2 && gamelib doc wait id3`,
+		Example: `  gamelib doc wait doc_abc
+  gamelib doc wait id1 id2 id3 --timeout 20m
+  gamelib doc wait id1 id2 --format ndjson`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			// Validate flags FIRST so an invalid --format doesn't cost the
@@ -99,8 +99,8 @@ For fail-fast semantics, use shell composition:
 		UsedFor:       "block until one or more documents reach a terminal parse state (completed or failed), or --timeout elapses",
 		RequiredFlags: []string{"<doc-id>... (one or more positionals)"},
 		Examples: []string{
-			"weknora doc wait doc_abc",
-			"weknora doc wait doc_a doc_b --timeout 5m",
+			"gamelib doc wait doc_abc",
+			"gamelib doc wait doc_a doc_b --timeout 5m",
 		},
 		Output: "envelope.data is {completed:[], failed:[{id,message}], timeout:[]}",
 		Warnings: []string{
@@ -241,7 +241,7 @@ func waitForDocs(ctx context.Context, ids []string, svc WaitService, opts WaitOp
 					// auto-enqueues). It never progresses on its own, so
 					// waiting would hang to the --timeout (124). Fail fast with
 					// the exact unblock command instead of silently polling.
-					addFailed(FailedDoc{ID: id, Message: "parse_status=draft: not queued for parsing — run `weknora doc reparse " + id + "` to index it"})
+					addFailed(FailedDoc{ID: id, Message: "parse_status=draft: not queued for parsing — run `gamelib doc reparse " + id + "` to index it"})
 					return
 				}
 

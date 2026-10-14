@@ -3,6 +3,7 @@ package secrets
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -59,6 +60,26 @@ func TestFileStore_NamespaceIsolation(t *testing.T) {
 	assert.Equal(t, "P", got)
 	got, _ = s.Get("staging", "access")
 	assert.Equal(t, "S", got)
+}
+
+func TestFileStore_IgnoresOldCredentialsAndPreservesThem(t *testing.T) {
+	dir := testutil.XDGTempDir(t)
+	oldPath := filepath.Join(dir, "weknora", "secrets", "prod", "access")
+	require.NoError(t, os.MkdirAll(filepath.Dir(oldPath), 0o700))
+	require.NoError(t, os.WriteFile(oldPath, []byte("old-token"), 0o600))
+	s, err := NewFileStore()
+	require.NoError(t, err)
+	_, err = s.Get("prod", "access")
+	require.ErrorIs(t, err, ErrNotFound)
+	require.NoError(t, s.Set("prod", "access", "new-token"))
+	got, err := s.Get("prod", "access")
+	require.NoError(t, err)
+	assert.Equal(t, "new-token", got)
+	assert.Contains(t, s.Ref("prod", "access"), "/gamelib/secrets/prod/access")
+	require.NoError(t, s.Delete("prod", "access"))
+	oldToken, err := os.ReadFile(oldPath)
+	require.NoError(t, err)
+	assert.Equal(t, "old-token", string(oldToken))
 }
 
 func TestFileStore_Ref(t *testing.T) {

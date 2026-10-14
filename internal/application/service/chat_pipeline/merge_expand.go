@@ -7,13 +7,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
-// expandShortContextWithNeighbors expands the short context with neighbors.
-//
-// Lookups are not tenant scoped: hits from an org-shared KB belong to the
-// sharing workspace, and a caller-tenant filter silently skipped their
-// expansion. The base IDs come from retrieval results and neighbors are only
-// accepted from the same knowledge, the same rule parent resolution uses
-// (#3342).
 func (p *PluginMerge) expandShortContextWithNeighbors(
 	ctx context.Context,
 	results []*types.SearchResult,

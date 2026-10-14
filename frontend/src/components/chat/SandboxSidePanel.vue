@@ -65,7 +65,6 @@
           ref="terminalRef"
           :session-id="sessionId"
           :agent-id="agentId"
-          :agent-source-tenant-id="agentSourceTenantId"
           class="chat-sandbox-panel__terminal"
         />
         <div v-else-if="panel?.activeTab.value === 'terminal'" class="chat-sandbox-panel__placeholder">
@@ -81,7 +80,6 @@
           ref="desktopRef"
           :session-id="sessionId"
           :agent-id="agentId"
-          :agent-source-tenant-id="agentSourceTenantId"
           class="chat-sandbox-panel__desktop"
         />
         <div v-else-if="panel?.activeTab.value === 'desktop' && desktopTabVisible" class="chat-sandbox-panel__placeholder">
@@ -115,8 +113,6 @@ const props = withDefaults(
     sessionId: string
     /** 当前会话选中的 agent（首次连接时按其配置自动创建沙箱）。 */
     agentId?: string
-    /** 共享智能体来源空间，缺省表示本空间自有 agent。 */
-    agentSourceTenantId?: string | number | null
     /** 参考来源面板同开时整体左移，避免两块 fixed 面板重叠。 */
     shifted?: boolean
     /** 参考来源面板当前宽度（查看原文时会变宽），左移的距离。 */

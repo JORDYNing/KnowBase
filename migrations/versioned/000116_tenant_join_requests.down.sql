@@ -1,0 +1,4 @@
+-- Intentionally retain tenant_join_requests on application rollback. In
+-- particular, feishu_bootstrap is a permanent authorization-completion marker:
+-- dropping it would permit a later upgrade/login to restore revoked ownership.
+-- Older application versions safely ignore this additive table.

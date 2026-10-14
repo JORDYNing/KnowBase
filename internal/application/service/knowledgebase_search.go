@@ -169,12 +169,6 @@ func (s *knowledgeBaseService) hybridSearchCandidates(ctx context.Context,
 
 	tenantInfo, _ := types.TenantInfoFromContext(ctx)
 
-	// Batch-load every KB in scope. Required for store grouping,
-	// embedding-model consistency validation, and FAQ type detection.
-	// GetKnowledgeBaseByIDs is intentionally tenant-agnostic at the
-	// repository layer so that Organization-shared KBs (owned by a
-	// different tenant) can be loaded here; authorization for each
-	// returned row is enforced explicitly below.
 	kbs, err := s.repo.GetKnowledgeBaseByIDs(ctx, searchKBIDs)
 	if err != nil {
 		logger.ErrorWithFields(ctx, err, map[string]interface{}{
@@ -517,12 +511,6 @@ func (s *knowledgeBaseService) buildRetrievalParams(
 	return retrieveParams, nil
 }
 
-// resolveQueryEmbedding returns the query embedding for a store group. It
-// reuses params.QueryEmbedding when the caller pre-computed it (the common
-// path — HybridSearch embeds once before fan-out), otherwise it embeds the
-// query text using the embedding model of the supplied KB. For cross-tenant
-// shared KBs the source tenant's embedding model is used so the produced
-// vector is compatible with the index it will be searched against.
 func (s *knowledgeBaseService) resolveQueryEmbedding(
 	ctx context.Context,
 	kb *types.KnowledgeBase,

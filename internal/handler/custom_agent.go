@@ -28,9 +28,8 @@ type sandboxConfigLookup interface {
 
 // CustomAgentHandler defines the HTTP handler for custom agent operations
 type CustomAgentHandler struct {
-	service      interfaces.CustomAgentService
-	imService    *im.Service
-	disabledRepo interfaces.TenantDisabledSharedAgentRepository
+	service   interfaces.CustomAgentService
+	imService *im.Service
 	// userService 仅用于 list 接口批量回填 creator_name，作用见
 	// KnowledgeBaseHandler.userService。
 	userService interfaces.UserService
@@ -44,7 +43,6 @@ type CustomAgentHandler struct {
 func NewCustomAgentHandler(
 	service interfaces.CustomAgentService,
 	imService *im.Service,
-	disabledRepo interfaces.TenantDisabledSharedAgentRepository,
 	userService interfaces.UserService,
 	sandboxConfigs *service.TenantSandboxConfigService,
 	host service.HostSandboxManager,
@@ -52,7 +50,6 @@ func NewCustomAgentHandler(
 	return &CustomAgentHandler{
 		service:        service,
 		imService:      imService,
-		disabledRepo:   disabledRepo,
 		userService:    userService,
 		sandboxConfigs: sandboxConfigs,
 		desktop:        host.Desktop,
@@ -268,37 +265,14 @@ func (h *CustomAgentHandler) ListAgents(c *gin.Context) {
 		agents = filtered
 	}
 
-	// Per-tenant "disabled by me" for own agents (only affects this tenant's conversation dropdown)
-	tenantIDVal, exists := c.Get(types.TenantIDContextKey.String())
-	if !exists {
-		logger.Error(ctx, "Workspace ID not found in context")
-		c.Error(errors.NewUnauthorizedError("Missing workspace context"))
-		return
-	}
-	tenantID, ok := tenantIDVal.(uint64)
-	if !ok {
-		logger.Errorf(ctx, "Tenant ID has unexpected type %T in context", tenantIDVal)
-		c.Error(errors.NewInternalServerError("Invalid workspace context type"))
-		return
-	}
-	disabledOwnIDs, err := h.disabledRepo.ListDisabledOwnAgentIDs(ctx, tenantID)
-	if err != nil {
-		logger.ErrorWithFields(ctx, err, map[string]interface{}{
-			"tenant_id": tenantID,
-		})
-		c.Error(errors.NewInternalServerError("Failed to list disabled agent IDs: " + err.Error()))
-		return
-	}
-
 	// 批量回填 creator_name，作用同 KB 列表：让前端能区分「我创建」与「同空间其他成员」。
 	// 内建 agent（IsBuiltin=true, CreatedBy=""）不会有 creator_name，前端按 builtin
 	// 分支单独渲染。
 	enrichAgentCreatorNames(ctx, h.userService, agents)
 
 	c.JSON(http.StatusOK, gin.H{
-		"success":                true,
-		"data":                   agents,
-		"disabled_own_agent_ids": disabledOwnIDs,
+		"success": true,
+		"data":    agents,
 	})
 }
 
@@ -428,8 +402,6 @@ func (h *CustomAgentHandler) UpdateAgent(c *gin.Context) {
 			c.Error(errors.NewForbiddenError("Cannot modify built-in agent"))
 		case service.ErrAgentNameRequired:
 			c.Error(errors.NewBadRequestError(err.Error()))
-		case service.ErrAgentKBScopeNotShareable:
-			_ = c.Error(errors.NewForbiddenError(err.Error()))
 		default:
 			// Reached only after the typed sentinels and *errors.AppError above, so
 			// whatever lands here is a raw repository/driver error. Its text

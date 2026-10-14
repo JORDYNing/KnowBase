@@ -24,7 +24,7 @@ type ViewService interface {
 	GetModel(ctx context.Context, id string) (*sdk.Model, error)
 }
 
-// NewCmdView builds `weknora model view <model-id>`.
+// NewCmdView builds `gamelib model view <model-id>`.
 func NewCmdView(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "view <model-id>",
@@ -48,7 +48,7 @@ func NewCmdView(f *cmdutil.Factory) *cobra.Command {
 	cmdutil.SetAgentHelp(cmd, cmdutil.AgentHelp{
 		UsedFor:       "fetch one model's full record by id",
 		RequiredFlags: []string{"<model-id> (positional)"},
-		Examples:      []string{"weknora model view model_abc --jq .data.type"},
+		Examples:      []string{"gamelib model view model_abc --jq .data.type"},
 		Output:        "envelope.data is the Model object (id, name, display_name, type, source, is_default, parameters)",
 	})
 	return cmd

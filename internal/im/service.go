@@ -413,11 +413,9 @@ func formatQuotedContext(quote *QuotedMessage) string {
 // withIMIdentity injects a synthetic caller identity into the context for IM
 // callbacks. IM platforms verify their own signatures and bypass the auth
 // middleware, so the downstream QA pipeline would otherwise see an empty
-// UserID/TenantRole. Mirroring the API-key path's "system-<tenantID>" synthetic
-// user (recognised by types.IsSyntheticUserID) lets Organization-shared
-// knowledge bases be merged and resolved correctly, since the shared-KB code
-// gates on a non-empty UserID. Viewer is the least privilege sufficient to
-// retrieve shared KBs. The channel locale replaces any HTTP middleware value
+// UserID/TenantRole. A "system-<tenantID>" identity, recognised by
+// types.IsSyntheticUserID, gives downstream authorization an explicit tenant
+// and a read-only principal. The channel locale replaces HTTP middleware data
 // because webhook Accept-Language belongs to the IM platform, not the writer;
 // channels without an explicit locale use the deployment default.
 func withIMIdentity(ctx context.Context, channel *IMChannel, msg *IncomingMessage) context.Context {

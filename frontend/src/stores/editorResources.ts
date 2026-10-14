@@ -102,13 +102,10 @@ export const useEditorResourcesStore = defineStore('editorResources', () => {
     },
   )
 
-  // A shared agent's skills and MCP services live in its owner's workspace and
-  // are an entirely different set from this workspace's. The cache key has to
-  // carry the agent, or switching agents would leave another workspace's
-  // entries in the @ picker.
+  // Keep independent snapshots for agent-specific resource filters.
   function scopeKey(configId: string, agent?: AgentScope): string {
-    if (!agent?.agentId || !agent?.sourceTenantId) return configId
-    return `${configId}@${agent.sourceTenantId}:${agent.agentId}`
+    if (!agent?.agentId) return configId
+    return `${configId}@${agent.agentId}`
   }
 
   let mcpServicesRequestScope: { key: string; agent?: AgentScope } = { key: '' }
@@ -128,10 +125,7 @@ export const useEditorResourcesStore = defineStore('editorResources', () => {
   const skillsResource = createCachedResource(
     async () => {
       const scope = skillsRequestScope
-      // No sandbox config means no skills, for a shared agent too: its config
-      // id is part of the agent config this caller already holds. The backend
-      // re-reads it from the agent, so what is sent here only has to be
-      // non-empty when the agent actually has one.
+      // Skills require an available sandbox configuration.
       if (!scope.configId) {
         return { key: scope.key, available: false, list: [] as SkillInfo[] }
       }

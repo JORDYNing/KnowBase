@@ -64,25 +64,18 @@ func seedActiveProfile(t *testing.T, name string, prof config.Profile) {
 	require.NoError(t, config.Save(cfg))
 }
 
-func TestRunLogin_PasswordMode(t *testing.T) {
+func TestRunLogin_PasswordModeIsDisabled(t *testing.T) {
 	iostreams.SetForTest(t)
-	f, store := newTestFactoryWithConfig(t, scriptedPrompter{email: "a@b.c", password: "secret"})
+	f, store := newTestFactoryWithConfig(t, prompt.AgentPrompter{})
 	seedActiveProfile(t, "prod", config.Profile{Host: "https://kb.example.com"})
-	svc := &fakeLoginService{resp: &sdk.LoginResponse{
-		Success: true,
-		Token:   "jwt-access",
-		User:    &sdk.AuthUser{ID: "u1", Email: "a@b.c", TenantID: 7},
-	}}
-	require.NoError(t, runLogin(context.Background(), &LoginOptions{}, &cmdutil.FormatOptions{Mode: cmdutil.FormatText}, f, svc))
-
-	assert.Equal(t, "a@b.c", svc.got.email)
-	assert.Equal(t, "secret", svc.got.password)
-
+	svc := &fakeLoginService{resp: &sdk.LoginResponse{Success: true, Token: "jwt-access"}}
+	err := runLogin(context.Background(), &LoginOptions{}, &cmdutil.FormatOptions{Mode: cmdutil.FormatText}, f, svc)
+	require.ErrorContains(t, err, "password login is disabled")
+	require.ErrorContains(t, err, "--with-token")
+	assert.Empty(t, svc.got.email)
+	assert.Empty(t, svc.got.password)
 	got, _ := store.Get("prod", "access")
-	assert.Equal(t, "jwt-access", got)
-
-	cfg, _ := f.Config()
-	assert.Equal(t, "https://kb.example.com", cfg.Profiles["prod"].Host, "host must be preserved from the seeded profile")
+	assert.Empty(t, got)
 }
 
 func TestRunLogin_WithToken(t *testing.T) {
@@ -190,14 +183,15 @@ func TestRunLogin_BadHost(t *testing.T) {
 	assert.Contains(t, err.Error(), "input.invalid_argument")
 }
 
-func TestRunLogin_LoginRefused(t *testing.T) {
+func TestRunLogin_PrefilledPasswordCannotBypassDisabledMode(t *testing.T) {
 	iostreams.SetForTest(t)
-	f, _ := newTestFactoryWithConfig(t, scriptedPrompter{email: "a@b.c", password: "x"})
+	f, _ := newTestFactoryWithConfig(t, prompt.AgentPrompter{})
 	seedActiveProfile(t, "p", config.Profile{Host: "https://x"})
-	svc := &fakeLoginService{resp: &sdk.LoginResponse{Success: false, Message: "bad password"}}
-	err := runLogin(context.Background(), &LoginOptions{}, &cmdutil.FormatOptions{Mode: cmdutil.FormatText}, f, svc)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "auth.bad_credential")
+	svc := &fakeLoginService{resp: &sdk.LoginResponse{Success: true, Token: "unexpected"}}
+	err := runLogin(context.Background(), &LoginOptions{Email: "a@b.c", Password: "secret"}, &cmdutil.FormatOptions{Mode: cmdutil.FormatText}, f, svc)
+	require.ErrorContains(t, err, "password login is disabled")
+	assert.Empty(t, svc.got.email)
+	assert.Empty(t, svc.got.password)
 }
 
 func TestValidateHost(t *testing.T) {

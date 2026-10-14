@@ -207,9 +207,7 @@ func leaseForkSnapshotOnDelete(
 		return
 	}
 	lease := &types.ForkSnapshotLease{
-		SnapshotID: snapshotID,
-		// Pairs with SandboxConfigID: the workspace that owns the config, not
-		// necessarily the one that owns the session (shared agents).
+		SnapshotID:      snapshotID,
 		TenantID:        session.SandboxConfigOwner(),
 		SandboxConfigID: session.SandboxConfigID,
 		CreatedAt:       time.Now().UTC(),

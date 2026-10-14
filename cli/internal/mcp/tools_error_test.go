@@ -30,8 +30,8 @@ func TestToolErrorResult_TypedError_PopulatesStructuredContent(t *testing.T) {
 	if sc.Type != "auth.unauthenticated" {
 		t.Errorf("type: got %v want auth.unauthenticated", sc.Type)
 	}
-	// retry_argv should fall back to ["weknora","auth","login"] via cmdutil default
-	if !reflect.DeepEqual(sc.RetryArgv, []string{"weknora", "auth", "login"}) {
+	// retry_argv should fall back to ["gamelib","auth","login"] via cmdutil default
+	if !reflect.DeepEqual(sc.RetryArgv, []string{"gamelib", "auth", "login"}) {
 		t.Errorf("retry_argv: got %v", sc.RetryArgv)
 	}
 }

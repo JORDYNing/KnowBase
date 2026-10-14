@@ -95,18 +95,16 @@ func TestRequireRole_RejectFiresAuditHook(t *testing.T) {
 	}
 }
 
-func TestRequireRole_DormantModeDoesNotFireAuditHook(t *testing.T) {
-	// EnableRBAC=false: middleware logs but does NOT 403, so the
-	// durable audit must NOT fire either — the dormant rollout window
-	// would otherwise generate audit noise for non-rejections.
+func TestRequireRole_LegacyDisabledFlagStillAuditsDeniedAccess(t *testing.T) {
+	// The historical opt-out flag cannot disable enforcement or its audit.
 	audit := &stubDenyAudit{}
 	w := auditableHarness(t, types.TenantRoleViewer, "u1", 7, audit,
 		RequireRole(types.TenantRoleOwner, cfgRBAC(false)))
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 in dormant mode, got %d", w.Code)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 despite legacy opt-out, got %d", w.Code)
 	}
-	if len(audit.calls) != 0 {
-		t.Fatalf("dormant mode must not fire audit, got %d calls", len(audit.calls))
+	if len(audit.calls) != 1 {
+		t.Fatalf("rejected access must fire audit, got %d calls", len(audit.calls))
 	}
 }
 
@@ -168,14 +166,11 @@ func TestOwnershipAuditOnlyRecordsPolicyDenials(t *testing.T) {
 			status:    http.StatusServiceUnavailable,
 		},
 
-		{name: "enforcement disabled", disabled: true, creator: "other", status: http.StatusOK},
+		{name: "legacy flag does not disable enforcement", disabled: true, creator: "other", status: http.StatusForbidden, auditCalls: 1},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			audit := &stubDenyAudit{}
 			lookup := func(*gin.Context) (string, error) {
-				if tt.disabled {
-					t.Fatal("disabled enforcement must skip lookup")
-				}
 				return tt.creator, tt.lookupErr
 			}
 			w := auditableHarness(t, types.TenantRoleContributor, "u1", 7, audit,

@@ -42,7 +42,7 @@ func profileDryRunFactory(t *testing.T) *cmdutil.Factory {
 // withRootHarnessProfile wraps a profile subcommand under a synthetic root
 // cmd that registers the global persistent flags.
 func withRootHarnessProfile(sub *cobra.Command, args ...string) *cobra.Command {
-	root := &cobra.Command{Use: "weknora"}
+	root := &cobra.Command{Use: "gamelib"}
 	pf := root.PersistentFlags()
 	pf.BoolP("yes", "y", false, "")
 	pf.String("format", "", "")

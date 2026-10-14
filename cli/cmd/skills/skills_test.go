@@ -18,7 +18,9 @@ func TestEmbeddedSkillsPresent(t *testing.T) {
 	skills, err := skillsfs.List()
 	require.NoError(t, err)
 	require.NotEmpty(t, skills, "at least one skill must be embedded")
+	var names []string
 	for _, s := range skills {
+		names = append(names, s.Name)
 		assert.NotEmpty(t, s.Files, "%s must embed files", s.Name)
 		var hasMD bool
 		for _, f := range s.Files {
@@ -28,6 +30,7 @@ func TestEmbeddedSkillsPresent(t *testing.T) {
 		}
 		assert.True(t, hasMD, "%s must embed a SKILL.md", s.Name)
 	}
+	assert.Equal(t, []string{"gamelib-rag-search", "gamelib-shared"}, names)
 }
 
 // TestWriteSkills_WritesAndIsIdempotent: install writes every embedded file

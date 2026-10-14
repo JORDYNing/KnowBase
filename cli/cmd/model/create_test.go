@@ -151,7 +151,7 @@ func TestParseParams(t *testing.T) {
 // withRootHarnessModel wraps a model subcommand under a synthetic root with the
 // global persistent flags so flag/enum validation and gating route correctly.
 func withRootHarnessModel(sub *cobra.Command, args ...string) *cobra.Command {
-	root := &cobra.Command{Use: "weknora"}
+	root := &cobra.Command{Use: "gamelib"}
 	pf := root.PersistentFlags()
 	pf.BoolP("yes", "y", false, "")
 	pf.String("format", "", "")

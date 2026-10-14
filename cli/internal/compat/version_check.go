@@ -1,5 +1,5 @@
 // Package compat probes server `/system/info` and decides client-server
-// version skew level. Used by `weknora doctor`'s server_version check.
+// version skew level. Used by `gamelib doctor`'s server_version check.
 //
 // 24h TTL state file cache, three-tier compat semantics
 // (major-mismatch=hard / minor-mismatch=soft / equal=ok).

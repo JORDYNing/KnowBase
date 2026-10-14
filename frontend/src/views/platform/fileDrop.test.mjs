@@ -83,7 +83,7 @@ test('settings opened over a knowledge base or chat own their file drops', async
 })
 
 test('unrelated pages and a knowledge route without an ID ignore global upload', async () => {
-  for (const name of ['knowledgeBaseList', 'agentList', 'organizationList', 'knowledgeBaseDetail']) {
+  for (const name of ['knowledgeBaseList', 'agentList', 'knowledgeBaseDetail']) {
     const f = fixture(name)
     f.handleGlobalDragEnter(fileDrag())
     await f.handleGlobalDrop(fileDrag())

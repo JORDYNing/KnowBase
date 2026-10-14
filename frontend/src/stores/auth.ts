@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { UserInfo, TenantInfo, KnowledgeBaseInfo } from '@/api/auth'
-import { userInfoFromApi } from '@/api/auth'
+import { userInfoFromApi, switchTenant as switchTenantApi, type LoginResponse } from '@/api/auth'
 import type { TenantInfo as TenantInfoFromAPI } from '@/api/tenant'
 import i18n from '@/i18n'
 import { reloadFontFromStorage } from '@/composables/useFont'
@@ -10,14 +10,13 @@ import { resetMigrationLatch } from '@/composables/preferenceStorage'
 import { BUILTIN_QUICK_ANSWER_ID } from '@/api/agent'
 import { useChatResourcesStore } from '@/stores/chatResources'
 import { useEditorResourcesStore } from '@/stores/editorResources'
-import { useOrganizationStore } from '@/stores/organization'
 import { createSequencedRefresh } from '@/stores/sequencedRefresh'
+import { hasAccessibleWorkspace } from '@/views/auth/teamAccessState'
 
 /** 登出时丢弃 Pinia 内的空间级资源缓存，避免 SPA 重登复用上一账号数据。 */
 function clearSessionResourceCaches() {
   useChatResourcesStore().invalidate()
   useEditorResourcesStore().invalidate()
-  useOrganizationStore().clearState()
 }
 
 // Per-user UI preferences are namespaced by user id in localStorage.
@@ -46,29 +45,13 @@ export const useAuthStore = defineStore('auth', () => {
   // so PR 3 can render a tenant-switcher UI without a store migration.
   const memberships = ref<Array<{ tenant_id: number; tenant_name?: string; role: string }>>([])
   const isLiteMode = ref(false)
-  // pendingInvitationCount is the number of pending tenant invitations
-  // addressed to the current user. Renders as a badge next to the
-  // avatar; updated by fetchPendingInvitationCount, which runs after
-  // login, after tenant switch, and on a polling interval. Polling
-  // (vs SSE) is fine — the count is checked rarely and a 1-2 minute
-  // staleness window is acceptable for an inbox indicator.
-  const pendingInvitationCount = ref<number>(0)
-  // Authoritative deployment capability returned by /auth/me. Defaults to
-  // false (fail-closed): we hide the "create workspace" affordance until
-  // /auth/me confirms the deployment allows it, so an invitation-only
-  // deployment never briefly flashes a create action the backend would
-  // then reject with 403/2005.
-  const canCreateTenant = ref(false)
-
-  const autoAcceptInvitation = ref(false)
-
   // 计算属性
   const isLoggedIn = computed(() => {
     return !!token.value && !!user.value
   })
 
   const hasValidTenant = computed(() => {
-    return !!tenant.value && !!tenant.value.id
+    return hasAccessibleWorkspace(tenant.value, memberships.value, user.value?.can_access_all_tenants === true)
   })
 
   const currentTenantId = computed(() => {
@@ -247,7 +230,7 @@ export const useAuthStore = defineStore('auth', () => {
         const parsed = JSON.parse(raw)
         if (parsed && typeof parsed === 'object') {
           parsed.selectedAgentId = BUILTIN_QUICK_ANSWER_ID
-          parsed.selectedAgentSourceTenantId = null
+          delete parsed.selectedAgentSourceTenantId
           parsed.isAgentEnabled = false
           if (parsed.conversationModels && typeof parsed.conversationModels === 'object') {
             parsed.conversationModels.summaryModelId = ''
@@ -295,43 +278,6 @@ export const useAuthStore = defineStore('auth', () => {
   ) => {
     memberships.value = Array.isArray(list) ? list : []
     localStorage.setItem('weknora_memberships', JSON.stringify(memberships.value))
-  }
-
-  // setPendingInvitationCount is the explicit setter used by the
-  // polling composable below. Keeping the mutation behind a setter
-  // matches the pattern of every other piece of auth state and lets
-  // future devtools / strict-mode checks intercept the write.
-  const setPendingInvitationCount = (n: number) => {
-    pendingInvitationCount.value = Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0
-  }
-
-  const setCanCreateTenant = (allowed: boolean) => {
-    canCreateTenant.value = allowed
-  }
-
-  const setAutoAcceptInvitation = (enabled: boolean) => {
-    autoAcceptInvitation.value = enabled
-  }
-
-  // fetchPendingInvitationCount hits the dedicated /me/invitations/
-  // pending-count endpoint and updates the store. Errors are
-  // swallowed — the badge degrades to its last-known value instead
-  // of nagging the user with a toast. The caller can choose to fire
-  // and forget (login flow) or await (manual refresh button).
-  const fetchPendingInvitationCount = async () => {
-    // Import lazily to avoid circular module ordering between auth
-    // store, axios interceptor, and i18n bootstrapping. The store is
-    // imported by very early modules in main.ts; a top-level api
-    // import would tighten that graph unnecessarily.
-    try {
-      const { getMyPendingInvitationCount } = await import('@/api/tenant/invitations')
-      const resp = await getMyPendingInvitationCount()
-      if (resp.success && resp.data) {
-        setPendingInvitationCount(resp.data.pending_count)
-      }
-    } catch {
-      // best-effort; keep last known value
-    }
   }
 
   // Reconcile user / home tenant / memberships with GET /api/v1/auth/me.
@@ -396,37 +342,38 @@ export const useAuthStore = defineStore('auth', () => {
       setMemberships(list)
     }
 
-    const createCapability = response.data?.capabilities?.can_create_tenant
-    if (typeof createCapability === 'boolean') {
-      setCanCreateTenant(createCapability)
-    }
-
-    setAutoAcceptInvitation(response.data?.capabilities?.auto_accept_invitation === true)
 
     authMeSynced = true
     return true
   }
 
-  // 用 token 加入空间并刷新成员关系、切到新空间。token 无效时返回 ok:false（不抛异常），
-  // 提示与跳转交给调用方（store 不碰 router）。
-  const acceptInvitationByTokenAndRefresh = async (
-    token: string,
-  ): Promise<{ ok: boolean; tenantId?: number; tenantName?: string }> => {
-    try {
-      const { acceptInvitationByToken } = await import('@/api/tenant/invitations')
-      const resp = await acceptInvitationByToken(token)
-      if (!resp.success || !resp.data?.membership) {
-        return { ok: false }
-      }
-      const tenantId = resp.data.membership.tenant_id
-      const tenantName = resp.data.tenant_name
-      // 刷新成员关系，并切到刚加入的空间。
-      await refreshFromAuthMe()
-      setSelectedTenant(tenantId, tenantName ?? null)
-      return { ok: true, tenantId, tenantName }
-    } catch {
-      return { ok: false }
-    }
+  const applyLoginResponse = async (response: LoginResponse): Promise<boolean> => {
+    if (!response.token) return false
+    authMeRequest.invalidate()
+    authMeSynced = false
+    clearSessionResourceCaches()
+    clearTenantScopedClientState()
+    setKnowledgeBases([])
+    setCurrentKnowledgeBase(null)
+    setTenant(null)
+    setMemberships([])
+    setSelectedTenant(null, null)
+    setToken(response.token)
+    if (response.refresh_token) setRefreshToken(response.refresh_token)
+    return refreshFromAuthMe()
+  }
+
+  const enterTeamWorkspace = async (): Promise<boolean> => {
+    const response = await switchTenantApi(10000, localStorage.getItem('weknora_refresh_token') || refreshToken.value)
+    return response.success && await applyLoginResponse(response)
+  }
+
+  /** Platform catalog access is independent of system-administrator privileges. */
+  const switchPlatformWorkspace = async (tenantId: number): Promise<boolean> => {
+    if (!canAccessAllTenants.value || !Number.isSafeInteger(tenantId) || tenantId <= 0) return false
+    const response = await switchTenantApi(tenantId, localStorage.getItem('weknora_refresh_token') || refreshToken.value)
+    if (!response.success || !canAccessAllTenants.value) return false
+    return await applyLoginResponse(response) && Number(tenant.value?.id) === tenantId && hasValidTenant.value
   }
 
   const getSelectedTenant = () => {
@@ -454,9 +401,6 @@ export const useAuthStore = defineStore('auth', () => {
     selectedTenantName.value = null
     allTenants.value = []
     memberships.value = []
-    pendingInvitationCount.value = 0
-    canCreateTenant.value = false
-    autoAcceptInvitation.value = false
     authMeSynced = false
     // 飞行中的 /auth/me 作废：登出之后才返回的响应不能再 setUser / setTenant。
     authMeRequest.invalidate()
@@ -563,7 +507,8 @@ export const useAuthStore = defineStore('auth', () => {
       }
     }
 
-    isLiteMode.value = localStorage.getItem('weknora_lite_mode') === 'true'
+    isLiteMode.value = false
+    localStorage.removeItem('weknora_lite_mode')
   }
 
   // 初始化时从localStorage恢复状态
@@ -581,9 +526,6 @@ export const useAuthStore = defineStore('auth', () => {
     selectedTenantName,
     allTenants,
     memberships,
-    pendingInvitationCount,
-    canCreateTenant,
-    autoAcceptInvitation,
 
     // 计算属性
     isLoggedIn,
@@ -608,13 +550,11 @@ export const useAuthStore = defineStore('auth', () => {
     setSelectedTenant,
     setAllTenants,
     setMemberships,
-    setPendingInvitationCount,
-    setCanCreateTenant,
-    setAutoAcceptInvitation,
-    fetchPendingInvitationCount,
     refreshFromAuthMe,
+    applyLoginResponse,
+    enterTeamWorkspace,
+    switchPlatformWorkspace,
     ensureAuthMe,
-    acceptInvitationByTokenAndRefresh,
     getSelectedTenant,
     setLiteMode,
     logout,

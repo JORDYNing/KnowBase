@@ -1,6 +1,7 @@
 package compat_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -28,10 +29,34 @@ func TestCache_RoundTrip(t *testing.T) {
 		t.Errorf("ServerVersion = %v, want %q", got, want.ServerVersion)
 	}
 
-	// File should live at $XDG_CACHE_HOME/weknora/server-info.yaml
-	p := filepath.Join(dir, "weknora", "server-info.yaml")
-	if _, err := filepath.Abs(p); err != nil {
-		t.Errorf("path resolution: %v", err)
+	// File should live at $XDG_CACHE_HOME/gamelib/server-info.yaml
+	p := filepath.Join(dir, "gamelib", "server-info.yaml")
+	if _, err := os.Stat(p); err != nil {
+		t.Errorf("cache file not written at new path: %v", err)
+	}
+}
+
+func TestCache_IgnoresOldNamespace(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", dir)
+	oldPath := filepath.Join(dir, "weknora", "server-info.yaml")
+	oldData := []byte("server_version: 1.2.3\nprobed_at: " + time.Now().UTC().Format(time.RFC3339) + "\n")
+	if err := os.MkdirAll(filepath.Dir(oldPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(oldPath, oldData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, fresh, err := compat.LoadCache()
+	if err != nil || info != nil || fresh {
+		t.Fatalf("old cache must not be loaded: info=%v fresh=%v err=%v", info, fresh, err)
+	}
+	if err := compat.SaveCache(&compat.Info{ServerVersion: "9.8.7", ProbedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(oldPath)
+	if err != nil || string(got) != string(oldData) {
+		t.Fatalf("old cache must remain untouched: data=%q err=%v", got, err)
 	}
 }
 

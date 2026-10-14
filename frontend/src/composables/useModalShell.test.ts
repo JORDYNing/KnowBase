@@ -44,7 +44,6 @@ function fixture() {
     },
     '@/stores/ui': { useUIStore: () => ui },
     '@/stores/auth': { useAuthStore: () => ({ hasRole: () => true }) },
-    '@/stores/organization': { useOrganizationStore: () => ({ sharedKnowledgeBases: [] }) },
     '@/stores/chatResources': { useChatResourcesStore: () => chat },
     '@/stores/editorResources': { useEditorResourcesStore: () => resources },
     '@/stores/deploymentCapabilities': {

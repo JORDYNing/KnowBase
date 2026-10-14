@@ -54,6 +54,11 @@ func newMoveGateRouter(kb interfaces.KnowledgeBaseService, kg interfaces.Knowled
 	r.Use(func(c *gin.Context) {
 		c.Set(types.TenantIDContextKey.String(), uint64(1))
 		c.Set(types.UserIDContextKey.String(), "u-test")
+		// This suite tests the vector-store gate with an authorized administrator.
+		ctx := context.WithValue(c.Request.Context(), types.TenantIDContextKey, uint64(1))
+		ctx = context.WithValue(ctx, types.UserIDContextKey, "u-test")
+		ctx = context.WithValue(ctx, types.TenantRoleContextKey, types.TenantRoleAdmin)
+		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	})
 	// asynqClient stays nil: every case here either rejects at the gate or

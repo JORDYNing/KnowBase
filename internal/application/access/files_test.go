@@ -47,7 +47,7 @@ func TestKBFilesRequireExactGrantAndBinding(t *testing.T) {
 		Caller:            types.CallerFromContext(base),
 		KnowledgeBase:     &types.KnowledgeBase{ID: "kb", TenantID: 2},
 		EffectiveTenantID: 2,
-		Permission:        types.OrgRoleViewer,
+		Permission:        types.KBPermissionRead,
 	}
 	ctx := grant.Context(base)
 	bindings := &fileBinding{allowed: true}
@@ -73,28 +73,20 @@ func TestKBFilesRequireExactGrantAndBinding(t *testing.T) {
 	require.ErrorIs(t, err, bindings.err)
 }
 
-func TestMessageFilesRequireReferenceAndRecheckRevocation(t *testing.T) {
+func TestMessageFilesRequireCallerTenantAndExactReference(t *testing.T) {
 	const ref = "resource://AbCdEfGhIjKlMnOpQrStUv"
-	messages := &fileMessages{
-		message: &types.Message{ID: "message", AgentID: "agent", AgentTenantID: 2, Role: "assistant"},
-	}
-	agents := &agentLookup{agent: &types.CustomAgent{ID: "agent", TenantID: 2}}
-	catalog := artifactFileCatalog{
-		fileCatalog{&types.StoredResource{TenantID: 2, PhysicalPath: "local://2/exports/a.png"}},
-	}
-	ctx := types.WithExecutionTenant(callerContext(), 2)
-	_, err := ResolveMessageFile(ctx, "session", "message", ref, messages, agents, catalog, MessageKBShareAuthorizer{})
-	require.ErrorIs(t, err, ErrForbidden)
-	messages.message.Content = "![image](" + ref + "x)"
-	_, err = ResolveMessageFile(ctx, "session", "message", ref, messages, agents, catalog, MessageKBShareAuthorizer{})
-	require.ErrorIs(t, err, ErrForbidden, "a longer handle is not the requested handle")
-	messages.message.Content = "![image](" + ref + ")"
-	_, err = ResolveMessageFile(ctx, "session", "message", ref, messages, agents, catalog, MessageKBShareAuthorizer{})
+	messages := &fileMessages{message: &types.Message{AgentTenantID: 1, Role: "assistant", Content: ref}}
+	catalog := fileCatalog{&types.StoredResource{TenantID: 1, PhysicalPath: "local://1/exports/a.png"}}
+	_, err := ResolveMessageFile(callerContext(), "session", "message", ref, messages, catalog)
 	require.NoError(t, err)
-	require.Equal(t, uint64(1), messages.tenant, "session lookup must use the caller")
-	agents.agent = nil
-	_, err = ResolveMessageFile(ctx, "session", "message", ref, messages, agents, catalog, MessageKBShareAuthorizer{})
-	require.ErrorIs(t, err, ErrForbidden, "historical references cannot bypass share revocation")
+	catalog.resource.TenantID = 2
+	catalog.resource.PhysicalPath = "local://2/exports/a.png"
+	_, err = ResolveMessageFile(callerContext(), "session", "message", ref, messages, catalog)
+	require.ErrorIs(t, err, ErrForbidden)
+	catalog.resource.TenantID = 1
+	messages.message.Content = ""
+	_, err = ResolveMessageFile(callerContext(), "session", "message", ref, messages, catalog)
+	require.ErrorIs(t, err, ErrForbidden)
 }
 
 func TestMessageArtifactsKeepSessionOwnershipSeparateFromAgentOutput(t *testing.T) {
@@ -105,12 +97,12 @@ func TestMessageArtifactsKeepSessionOwnershipSeparateFromAgentOutput(t *testing.
 		Artifacts:     types.MessageArtifacts{{URL: ref, FileName: "report.pdf"}},
 	}
 	catalog := fileCatalog{&types.StoredResource{TenantID: 1, PhysicalPath: "local://1/exports/report.pdf"}}
-	file, err := ResolveMessageArtifact(callerContext(), message, 0, nil, catalog, MessageKBShareAuthorizer{})
+	file, err := ResolveMessageArtifact(callerContext(), message, 0, catalog)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), file.OwnerTenantID)
 	catalog.resource.TenantID = 2
 	catalog.resource.PhysicalPath = "local://2/exports/report.pdf"
-	_, err = ResolveMessageArtifact(callerContext(), message, 0, nil, catalog, MessageKBShareAuthorizer{})
+	_, err = ResolveMessageArtifact(callerContext(), message, 0, catalog)
 	require.ErrorIs(t, err, ErrForbidden)
 }
 
@@ -118,37 +110,6 @@ type messageFileKBs struct{ kb *types.KnowledgeBase }
 
 func (k messageFileKBs) GetKnowledgeBasesByIDsOnly(context.Context, []string) ([]*types.KnowledgeBase, error) {
 	return []*types.KnowledgeBase{k.kb}, nil
-}
-
-func TestMessageSharedKBFilesRequireLiveBinding(t *testing.T) {
-	const ref = "resource://AbCdEfGhIjKlMnOpQrStUv"
-	message := &types.Message{
-		AgentTenantID: 1, Role: "assistant",
-		KnowledgeReferences: types.References{{KnowledgeBaseID: "shared", Content: ref}},
-	}
-	catalog := fileCatalog{&types.StoredResource{
-		Handle: "AbCdEfGhIjKlMnOpQrStUv", TenantID: 2, PhysicalPath: "local://2/exports/a.png",
-	}}
-	binding := &fileBinding{allowed: true}
-	shares := &shareLookup{permission: types.OrgRoleViewer}
-	authorizer := MessageKBShareAuthorizer{
-		ShareGuard: shares, KBs: messageFileKBs{kb: &types.KnowledgeBase{ID: "shared", TenantID: 2}}, Bindings: binding,
-	}
-	_, err := AuthorizeMessageFile(callerContext(), message, ref, nil, catalog, authorizer)
-	require.NoError(t, err)
-	require.Equal(t, "shared", binding.kb)
-	require.Equal(t, uint64(2), binding.tenant)
-	binding.allowed = false
-	_, err = AuthorizeMessageFile(callerContext(), message, ref, nil, catalog, authorizer)
-	require.ErrorIs(t, err, ErrForbidden, "retrieval text alone must not authorize an unrelated same-tenant resource")
-	binding.allowed = true
-	binding.err = errors.New("binding lookup unavailable")
-	_, err = AuthorizeMessageFile(callerContext(), message, ref, nil, catalog, authorizer)
-	require.ErrorIs(t, err, ErrForbidden)
-	binding.err = nil
-	authorizer.Bindings = nil
-	_, err = AuthorizeMessageFile(callerContext(), message, ref, nil, catalog, authorizer)
-	require.ErrorIs(t, err, ErrForbidden, "missing live lookup must fail closed")
 }
 
 // This fixture represents a catalog claim made by the artifact collector.
@@ -171,25 +132,24 @@ func TestDeletedArtifactIsNotServedFromTheAnswerText(t *testing.T) {
 	const ref = "resource://AbCdEfGhIjKlMnOpQrStUv"
 	deletedAt := time.Now()
 	messages := &fileMessages{message: &types.Message{
-		ID: "message", AgentID: "agent", AgentTenantID: 2, Role: "assistant",
+		ID: "message", AgentID: "agent", AgentTenantID: 1, Role: "assistant",
 		Content:   "![report](" + ref + ")",
 		Artifacts: types.MessageArtifacts{{URL: ref, FileName: "report.pdf"}},
 	}}
-	agents := &agentLookup{agent: &types.CustomAgent{ID: "agent", TenantID: 2}}
 	catalog := artifactFileCatalog{
-		fileCatalog{&types.StoredResource{TenantID: 2, PhysicalPath: "local://2/exports/report.pdf"}},
+		fileCatalog{&types.StoredResource{TenantID: 1, PhysicalPath: "local://1/exports/report.pdf"}},
 	}
 	ctx := types.WithExecutionTenant(callerContext(), 2)
 
-	_, err := ResolveMessageFile(ctx, "session", "message", ref, messages, agents, catalog, MessageKBShareAuthorizer{})
+	_, err := ResolveMessageFile(ctx, "session", "message", ref, messages, catalog)
 	require.NoError(t, err, "a live artifact is served as before")
 
 	messages.message.Artifacts[0].DeletedAt = &deletedAt
-	_, err = ResolveMessageFile(ctx, "session", "message", ref, messages, agents, catalog, MessageKBShareAuthorizer{})
+	_, err = ResolveMessageFile(ctx, "session", "message", ref, messages, catalog)
 	require.ErrorIs(t, err, ErrForbidden, "the handle left in the answer text must not re-authorize a deleted file")
 
 	// The index-addressed artifact download agrees.
-	_, err = ResolveMessageArtifact(ctx, messages.message, 0, agents, catalog, MessageKBShareAuthorizer{})
+	_, err = ResolveMessageArtifact(ctx, messages.message, 0, catalog)
 	require.ErrorIs(t, err, ErrNotFound)
 }
 

@@ -194,8 +194,7 @@ func (t *ListDocumentsTool) listScoped(
 	ctx context.Context, kbID, keyword string, page, pageSize int,
 ) ([]*types.Knowledge, int64, error) {
 	tenantID := t.searchTargets.GetTenantIDForKB(kbID)
-	// Documents live under the knowledge base owner, which may differ from the
-	// caller's tenant for organization-shared bases.
+	// Use the persisted owner captured in the admitted search target.
 	listCtx := ctx
 	if tenantID != 0 {
 		listCtx = context.WithValue(ctx, types.TenantIDContextKey, tenantID)

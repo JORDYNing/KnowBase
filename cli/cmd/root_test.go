@@ -21,8 +21,40 @@ func TestRoot_Help(t *testing.T) {
 	root.SetOut(&out)
 	require.NoError(t, root.Execute())
 	got := out.String()
-	assert.Contains(t, got, "weknora")
+	assert.Contains(t, got, "gamelib")
+	assert.Contains(t, got, "Gamelib")
+	assert.NotContains(t, got, "weknora")
+	assert.Empty(t, root.Aliases)
 	assert.Contains(t, got, "version")
+}
+
+func TestRoot_VersionAndCompletionUseNewCommand(t *testing.T) {
+	for _, args := range [][]string{{"--version"}, {"completion", "bash"}, {"completion", "zsh"}, {"completion", "fish"}, {"completion", "powershell"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			var out bytes.Buffer
+			root := NewRootCmd(cmdutil.New())
+			root.SetArgs(args)
+			root.SetOut(&out)
+			require.NoError(t, root.Execute())
+			assert.Contains(t, out.String(), "gamelib")
+			assert.NotContains(t, out.String(), "weknora")
+		})
+	}
+}
+
+func TestResolveFormatEarly_IgnoreOldEnvironment(t *testing.T) {
+	t.Setenv("GAMELIB_FORMAT", "")
+	t.Setenv("WEKNORA_FORMAT", "text")
+	t.Cleanup(func() { cmdutil.SetFormatMode(string(cmdutil.DefaultFormatMode)) })
+	resolveFormatEarly(nil)
+	var out bytes.Buffer
+	cmdutil.PrintError(&out, cmdutil.NewFlagError(errors.New("unknown flag")))
+	assert.True(t, json.Valid(out.Bytes()), "old environment must not switch error output to prose")
+	t.Setenv("GAMELIB_FORMAT", "text")
+	resolveFormatEarly(nil)
+	out.Reset()
+	cmdutil.PrintError(&out, cmdutil.NewFlagError(errors.New("unknown flag")))
+	assert.False(t, json.Valid(out.Bytes()), "new environment must select prose error output")
 }
 
 func TestVersion_JSON(t *testing.T) {
@@ -112,7 +144,7 @@ func TestMapCobraError(t *testing.T) {
 		assert.Equal(t, assert.AnError, err)
 	})
 	t.Run("unknown command wraps as FlagError", func(t *testing.T) {
-		err := MapCobraError(errors.New(`unknown command "bogus" for "weknora"`))
+		err := MapCobraError(errors.New(`unknown command "bogus" for "gamelib"`))
 		var fe *cmdutil.FlagError
 		assert.True(t, errors.As(err, &fe))
 	})

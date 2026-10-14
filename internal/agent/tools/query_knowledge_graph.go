@@ -685,7 +685,7 @@ func (t *QueryKnowledgeGraphTool) knowledgeTitles(ctx context.Context, ids []str
 		return titles, nil
 	}
 	tenantID, _ := types.TenantIDFromContext(ctx)
-	knowledges, err := t.scopeKnowledgeService.GetKnowledgeBatchWithSharedAccess(ctx, tenantID, ids)
+	knowledges, err := t.scopeKnowledgeService.GetAuthorizedKnowledgeBatch(ctx, tenantID, ids)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load documents: %w", err)
 	}

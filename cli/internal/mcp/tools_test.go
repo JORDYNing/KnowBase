@@ -142,7 +142,7 @@ func (f *fakeSvc) ListKnowledgeChunks(_ context.Context, docID string, page, pag
 func newTestServer(t *testing.T, svc ServiceClient) (*mcpsdk.ClientSession, context.CancelFunc) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "weknora-test", Version: "v0.0.0-test"}, nil)
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "gamelib-test", Version: "v0.0.0-test"}, nil)
 	registerTools(server, svc)
 
 	st, ct := mcpsdk.NewInMemoryTransports()

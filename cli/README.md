@@ -1,11 +1,11 @@
-# weknora — Gamelib CLI
+# gamelib — Gamelib CLI
 
 A command-line interface for the Gamelib RAG knowledge-base server. Lets you
 authenticate, manage knowledge bases and documents, run hybrid search, and
 ask streaming RAG questions from your terminal or from an AI agent.
 
 ```bash
-$ weknora --help
+$ gamelib --help
 Command-line client for the Gamelib RAG server. Manage knowledge bases
 and documents, run hybrid search, chat with grounded answers, or expose
 a curated read-only MCP tool surface for AI agents.
@@ -24,7 +24,7 @@ Available Commands:
   help        Help about any command
   kb          Manage knowledge bases
   link        Bind the current directory to a knowledge base
-  mcp         Run weknora as a Model Context Protocol server
+  mcp         Run gamelib as a Model Context Protocol server
   message     Inspect and manage messages inside chat sessions
   model       Manage models (list / view / create / update / delete)
   profile     Manage CLI profiles (named connection targets)
@@ -49,9 +49,9 @@ Requires Go 1.26+.
 
 ```bash
 
-cd Gamelib/cli
-go build -o weknora .
-sudo mv weknora /usr/local/bin/   # or anywhere on $PATH
+cd cli                          # from the repository root
+go build -o gamelib .
+sudo mv gamelib /usr/local/bin/   # or anywhere on $PATH
 ```
 
 ### Pre-built binaries
@@ -66,52 +66,49 @@ until then, use the from-source build above.
 
 ```bash
 # 1. Register your Gamelib server as a profile and make it active
-weknora profile add prod --host https://kb.example.com --use
+gamelib profile add prod --host https://kb.example.com --use
 
-# 2. Authenticate the active profile (interactive password prompt)
-weknora auth login
-
-# 2b. Or pipe an API key from stdin (for CI / AI agents)
-echo "sk-..." | weknora auth login --with-token
+# 2. Authenticate the active profile with an API key from stdin
+echo "sk-..." | gamelib auth login --with-token
 
 # 3. List knowledge bases
-weknora kb list
+gamelib kb list
 
 # 4. Bind this directory to a knowledge base — subsequent commands auto-resolve --kb
-weknora link --kb my-knowledge-base
+gamelib link --kb my-knowledge-base
 
 # 5. Upload a document, then block until parsing finishes
-weknora doc upload notes.md
-weknora doc wait doc_abc                          # exit 0 completed, 1 failed, 124 --timeout, 130 ^C
-weknora doc reparse doc_abc                       # re-trigger parsing if it failed, then wait again
+gamelib doc upload notes.md
+gamelib doc wait doc_abc                          # exit 0 completed, 1 failed, 124 --timeout, 130 ^C
+gamelib doc reparse doc_abc                       # re-trigger parsing if it failed, then wait again
 
 # 6. Search
-weknora search chunks "what is reciprocal rank fusion?"
+gamelib search chunks "what is reciprocal rank fusion?"
 
 # 7. Ask the LLM (streams to terminal)
-weknora chat "summarise the design doc"
+gamelib chat "summarise the design doc"
 
-# 8. Manage custom agents and run them (see `weknora agent --help` / `weknora session --help`)
-weknora model list                               # discover a model id for --model
-weknora agent list
-weknora session ask --agent ag_abc "what's our q4 retention plan?"
+# 8. Manage custom agents and run them (see `gamelib agent --help` / `gamelib session --help`)
+gamelib model list                               # discover a model id for --model
+gamelib agent list
+gamelib session ask --agent ag_abc "what's our q4 retention plan?"
 
 # 9. Inspect a document's chunks for RAG retrieval debug
-weknora chunk list --doc doc_xyz
+gamelib chunk list --doc doc_xyz
 
 # 10. Inspect messages in a session / search across sessions
-weknora message list --session sess_abc
-weknora message search "retry policy"                      # cross-session Q&A retrieval
+gamelib message list --session sess_abc
+gamelib message search "retry policy"                      # cross-session Q&A retrieval
 
 # 11. Resolve a pending tool approval (agent run blocked on approval event)
-weknora session tool-approval resolve pend_xxx -y          # approve (after user go-ahead)
-weknora session resume sess_abc --message msg_xyz # resume the blocked stream
+gamelib session tool-approval resolve pend_xxx -y          # approve (after user go-ahead)
+gamelib session resume sess_abc --message msg_xyz # resume the blocked stream
 
 # 12. Health & verification verbs
-weknora kb status kb_abc       # fast snapshot: reachable / counts / processing flag (1 HTTP)
-weknora kb check kb_abc        # deep verify: also aggregates failed_count via doc list (1+N HTTP)
-weknora agent status ag_abc    # fast: reachable / model_id
-weknora agent check ag_abc     # deep: probes every KB in the agent's scope
+gamelib kb status kb_abc       # fast snapshot: reachable / counts / processing flag (1 HTTP)
+gamelib kb check kb_abc        # deep verify: also aggregates failed_count via doc list (1+N HTTP)
+gamelib agent status ag_abc    # fast: reachable / model_id
+gamelib agent check ag_abc     # deep: probes every KB in the agent's scope
 ```
 
 ---
@@ -124,18 +121,18 @@ For AI agents (any MCP-capable host) integrating Gamelib:
 2. Authenticate. In a sandbox / CI, the **stateless** path needs no `auth login`
    and writes nothing to disk — just set two env vars:
    ```bash
-   export WEKNORA_API_KEY="sk-…"   # or WEKNORA_TOKEN for a bearer JWT
-   export WEKNORA_HOST="https://kb.example.com"
-   weknora kb list                 # already authenticated
+   export GAMELIB_API_KEY="sk-…"   # or GAMELIB_TOKEN for a bearer JWT
+   export GAMELIB_HOST="https://kb.example.com"
+   gamelib kb list                 # already authenticated
    ```
    Or, for a persisted local profile:
    ```bash
-   weknora profile add prod --host <server-url> --use
-   weknora auth login
+   gamelib profile add prod --host <server-url> --use
+   echo "$GAMELIB_API_KEY" | gamelib auth login --with-token
    ```
 3. Register MCP in the host's MCP config:
    ```json
-   {"mcpServers": {"weknora": {"command": "weknora", "args": ["mcp", "serve"]}}}
+   {"mcpServers": {"gamelib": {"command": "gamelib", "args": ["mcp", "serve"]}}}
    ```
 4. Read the [wire contract](AGENTS.md#wire-contract-for-ai-agents) before
    parsing `--format json` output.
@@ -145,19 +142,19 @@ For AI agents (any MCP-capable host) integrating Gamelib:
 **Bundled Agent Skills.** This CLI ships [Agent Skills](https://agentskills.io/specification)
 under [`skills/`](skills/) that teach an agent to drive Gamelib without trial and error:
 
-- [`weknora-shared`](skills/weknora-shared/SKILL.md) — **read first**: auth/profile
+- [`gamelib-shared`](skills/gamelib-shared/SKILL.md) — **read first**: auth/profile
   sequence, `--kb` resolution, the JSON-envelope + exit-code contract, the exit-10
   protocol, `--dry-run`, and CLI-vs-MCP selection.
-- [`weknora-rag-search`](skills/weknora-rag-search/SKILL.md) — when to use `chat`
+- [`gamelib-rag-search`](skills/gamelib-rag-search/SKILL.md) — when to use `chat`
   vs `session ask` vs `search chunks`, plus retrieval gotchas.
 
 Install them with the CLI (the skills are embedded in the binary, no checkout
 needed):
 
 ```bash
-weknora skills install                      # writes to ~/.claude/skills
-weknora skills install --dir <agent-skills-dir> --force   # other agents / overwrite
-weknora skills list --format json           # what would be installed
+gamelib skills install                      # writes to ~/.claude/skills
+gamelib skills install --dir <agent-skills-dir> --force   # other agents / overwrite
+gamelib skills list --format json           # what would be installed
 ```
 
 Existing files are left untouched without `--force`; `--dry-run` previews the
@@ -174,27 +171,27 @@ on the *active* profile (override per-invocation with the global `--profile`
 flag). Create a profile first, then authenticate it:
 
 ```bash
-weknora profile add prod    --host https://prod.example.com --use     # add + switch
-weknora auth login                                                    # authenticate active (prod)
+gamelib profile add prod    --host https://prod.example.com --use     # add + switch
+echo "$GAMELIB_API_KEY" | gamelib auth login --with-token            # authenticate active (prod)
 
-weknora profile add staging --host https://staging.example.com        # add (stays inactive)
-echo "sk-..." | weknora --profile staging auth login --with-token     # authenticate staging
+gamelib profile add staging --host https://staging.example.com        # add (stays inactive)
+echo "sk-..." | gamelib --profile staging auth login --with-token     # authenticate staging
 
-weknora auth list
-weknora profile use prod                                              # switch back
+gamelib auth list
+gamelib profile use prod                                              # switch back
 ```
 
 Credentials are persisted to your OS keyring (Keychain on macOS, libsecret on
 Linux, Wincred on Windows) when available, otherwise to a 0600-mode file
-under `$XDG_CONFIG_HOME/weknora/secrets/`. The active profile lives in
-`~/.config/weknora/config.yaml`.
+under `$XDG_CONFIG_HOME/gamelib/secrets/`. The active profile lives in
+`~/.config/gamelib/config.yaml`.
 
 To remove a profile's stored credentials:
 
 ```bash
-weknora auth logout                       # active profile
-weknora --profile staging auth logout     # specific profile
-weknora auth logout --all
+gamelib auth logout                       # active profile
+gamelib --profile staging auth logout     # specific profile
+gamelib auth logout --all
 ```
 
 ---
@@ -203,7 +200,7 @@ weknora auth logout --all
 
 Designed to be AI-agent-first. Stable across minor releases; breaking
 changes announced in the changelog and the corresponding
-`weknora --version` bump. This section is the human overview; the complete,
+`gamelib --version` bump. This section is the human overview; the complete,
 authoritative contract (envelope field stability, error taxonomy, streaming,
 confirmation and dry-run protocols) lives in **[AGENTS.md](AGENTS.md)**.
 
@@ -222,16 +219,16 @@ symmetric envelope `{ok, data, meta?}` — `data` is an array for `list` /
 against the whole envelope, so reach into list items with `.data[]`:
 
 ```bash
-weknora kb list --format json                              # {"ok":true,"data":[{"id":"kb_x",…}],"meta":{"count":1,…}}
-weknora kb view kb_x --format json                         # {"ok":true,"data":{"id":"kb_x","name":"Eng",…}}
-weknora kb list --format json --jq '.data[] | {id, name}'  # project listed fields out of each item
-weknora kb list --format json --jq '.data[].id'            # ids only
-weknora kb list --format json --jq '.meta.count'           # number returned
+gamelib kb list --format json                              # {"ok":true,"data":[{"id":"kb_x",…}],"meta":{"count":1,…}}
+gamelib kb view kb_x --format json                         # {"ok":true,"data":{"id":"kb_x","name":"Eng",…}}
+gamelib kb list --format json --jq '.data[] | {id, name}'  # project listed fields out of each item
+gamelib kb list --format json --jq '.data[].id'            # ids only
+gamelib kb list --format json --jq '.meta.count'           # number returned
 ```
 
 `--format ndjson` is also accepted for streaming list commands; each
 element is emitted as its own JSON line. `--format json` is the default
-regardless of TTY — running `weknora kb list | jq` works without an
+regardless of TTY — running `gamelib kb list | jq` works without an
 explicit flag. Use `--format text` for human-readable output.
 
 ### Errors
@@ -248,7 +245,7 @@ Example:
 
 ```
 auth.unauthenticated: fetch current user: HTTP error 401: ...
-hint: run `weknora auth login`
+hint: run `gamelib auth login`
 ```
 
 Under `--format json` the same failure is the typed error envelope on stderr
@@ -262,7 +259,7 @@ taxonomy.
 |---|---|---|
 | `0`   | success                                                | continue |
 | `1`   | typed `local.*` / `operation.failed` / unclassified    | read stderr, decide retry/abort |
-| `2`   | flag / argument validation error                       | re-check `weknora <cmd> --help` |
+| `2`   | flag / argument validation error                       | re-check `gamelib <cmd> --help` |
 | `3`   | `auth.*` (token missing / expired / forbidden)         | re-auth, then retry |
 | `4`   | `resource.not_found`                                   | verify the resource id |
 | `5`   | `input.*` (other than `confirmation_required`)         | adjust args, retry |
@@ -272,7 +269,7 @@ taxonomy.
 | `124` | `operation.timeout` (e.g. `doc wait --timeout` reached) | raise `--timeout` or check the underlying job |
 | `130` | cancelled by signal — typed `operation.cancelled` errors exit 1; `main.go` promotes the process exit to 130 when the root context was signal-cancelled (SIGINT / SIGTERM) | stop, do not retry |
 
-Run `weknora exit-codes` for the machine-readable matrix (JSON); `weknora help exit-codes` for the human-readable table.
+Run `gamelib exit-codes` for the machine-readable matrix (JSON); `gamelib help exit-codes` for the human-readable table.
 
 **Exit 10** is the wire-level signal for "destructive write needs
 explicit confirmation". Pass `-y/--yes` on `kb delete` /
@@ -290,10 +287,10 @@ is the guard against unintended writes.
   the unmodified raw stream.
 - `--format json` composes with the global `--profile <name>` for
   single-shot profile overrides without disk writes.
-- `weknora mcp serve` exposes a curated read-only tool surface over
+- `gamelib mcp serve` exposes a curated read-only tool surface over
   stdio MCP for any MCP-compatible client.
-- `weknora schema` enumerates every command with its `used_for`, and
-  `weknora schema <cmd path>` (e.g. `weknora schema doc update`) prints that
+- `gamelib schema` enumerates every command with its `used_for`, and
+  `gamelib schema <cmd path>` (e.g. `gamelib schema doc update`) prints that
   command's full contract — `used_for`, `required_flags`, `examples`,
   `output`, `warnings`, `risk`, and local `flags` — as the standard envelope,
   so an agent can discover the surface without scraping `--help` prose.
@@ -305,24 +302,25 @@ is the guard against unintended writes.
 Gamelib CLI exposes top use cases as polished commands; deep
 configuration goes through the raw HTTP passthrough. CLI flag coverage
 targets common workflows, not 1:1 API parity. Examples of deep
-operations that intentionally go through `weknora api`:
+operations that intentionally go through `gamelib api`:
 
 - **Tuning a KB's nested config** — chunking strategy, summary model,
   multimodal extraction defaults, FAQ thresholds, VLM model. Use
-  `weknora api PUT /api/v1/knowledge-bases/<id> --input -` with a JSON
+  `gamelib api PUT /api/v1/knowledge-bases/<id> --input -` with a JSON
   body matching the server's `UpdateKnowledgeBaseRequest`. (Note: the
   storage provider is set once at create time via
   `kb create --storage-provider <name>` and is not updatable.)
 - **Per-request `chat` parameters** — multi-KB scope, summary model
-  override, image attachments, web search toggle. Use `weknora api POST
+  override, image attachments, web search toggle. Use `gamelib api POST
   /api/v1/knowledge-chat/<session-id> --input -`.
 - **Per-request `session ask --agent` overrides** — same shape via
-  `weknora api POST /api/v1/agent-chat/<session-id> --input -`.
-- **Operations without a CLI verb** — register / change-password /
-  OIDC flows, organization / sharing endpoints, tenant management.
+  `gamelib api POST /api/v1/agent-chat/<session-id> --input -`.
+- **Platform tenant management** — use the tenant endpoints with an authorized
+  platform API key. People sign in through Feishu in the web application;
+  password login, public registration, OIDC and organization sharing are unavailable.
 
-`weknora api --help` documents the raw passthrough. Run
-`weknora doctor` first to verify auth and base URL.
+`gamelib api --help` documents the raw passthrough. Run
+`gamelib doctor` first to verify auth and base URL.
 
 ---
 
@@ -332,7 +330,7 @@ Add `--dry-run` to any mutation command to preview the would-be action without e
 
 ```bash
 # Preview a kb create without actually creating
-weknora kb create --name "test-kb" --description "for review" --dry-run
+gamelib kb create --name "test-kb" --description "for review" --dry-run
 
 # Output (single line; pretty-printed here for readability):
 # {
@@ -353,32 +351,32 @@ dry-run is **offline**: no network calls, no file IO, no credential touches. Wor
 For destructive commands, dry-run does NOT trigger the exit-10 confirmation flow:
 
 ```bash
-weknora kb delete kb_xxxx --dry-run   # exit 0, no prompt
-weknora kb delete kb_xxxx             # exit 10, prompts for -y
+gamelib kb delete kb_xxxx --dry-run   # exit 0, no prompt
+gamelib kb delete kb_xxxx             # exit 10, prompts for -y
 ```
 
 For the `api` command, dry-run requires explicit write method (POST/PUT/PATCH/DELETE); GET returns FlagError:
 
 ```bash
-echo '{"name":"foo"}' | weknora api -X POST /api/v1/knowledge-bases --input - --dry-run   # OK
-weknora api /api/v1/knowledge-bases --dry-run                                              # exit 2: requires explicit -X
+echo '{"name":"foo"}' | gamelib api -X POST /api/v1/knowledge-bases --input - --dry-run   # OK
+gamelib api /api/v1/knowledge-bases --dry-run                                              # exit 2: requires explicit -X
 ```
 
 ---
 
 ## Resuming streams
 
-The `weknora session resume` command resumes an SSE event stream for an existing assistant message. Useful for network-blip recovery or polling long-running agent invocations:
+The `gamelib session resume` command resumes an SSE event stream for an existing assistant message. Useful for network-blip recovery or polling long-running agent invocations:
 
 ```bash
 # Original streaming call captures session_id + message_id from init event:
-weknora session ask "..." --agent ag_xxxx --format ndjson | tee /tmp/stream.ndjson
+gamelib session ask "..." --agent ag_xxxx --format ndjson | tee /tmp/stream.ndjson
 # {"type":"init","session_id":"sess_abc","message_id":"msg_xyz"}
 # ... events flow ...
 # [network blip]
 
 # Resume the same stream:
-weknora session resume sess_abc --message msg_xyz
+gamelib session resume sess_abc --message msg_xyz
 # Server REPLAYS all stored events from the start, then tails new ones.
 # Agent must dedupe (by message_id or event hash) to avoid double-processing.
 ```
@@ -390,10 +388,10 @@ An agent run may pause the stream on a tool-approval event until a human approve
 ```bash
 # 1. Stream pauses with a tool-approval event carrying a pending_id.
 # 2. Surface the pending tool call to the user; get explicit go-ahead.
-weknora session tool-approval resolve pend_xxx -y                      # approve
-# weknora session tool-approval resolve pend_xxx --reject --reason "..." -y  # reject
+gamelib session tool-approval resolve pend_xxx -y                      # approve
+# gamelib session tool-approval resolve pend_xxx --reject --reason "..." -y  # reject
 # 3. Resume the stream — server replays + tails from where the run was blocked.
-weknora session resume sess_abc --message msg_xyz
+gamelib session resume sess_abc --message msg_xyz
 ```
 
 Pass `--modified-args '{"key":"value"}'` to replace tool arguments on approve (must be a non-empty JSON object). Never auto-pass `-y` — the approval is the exit-10 human-in-the-loop gate.
@@ -406,7 +404,7 @@ See `cli/AGENTS.md` "Stream recovery" section for the full agent contract.
 
 ## Health check
 
-Run `weknora doctor` for a 4-status diagnostic (OK / warn / fail /
+Run `gamelib doctor` for a 4-status diagnostic (OK / warn / fail /
 skip) covering base URL reachability, authentication, server-CLI
 version skew, and credential storage backend. Add `--format json` for
 machine-readable output, `--offline` to skip network checks.
@@ -416,12 +414,12 @@ a fast vs deep choice:
 
 | Verb | Cost | Use |
 |---|---|---|
-| `weknora kb status <kb-id>`     | 1 HTTP    | live counts / processing flag |
-| `weknora kb check <kb-id>`      | 1+N HTTP  | adds `failed_count` via doc-list page-walk |
-| `weknora agent status <agent-id>` | 1 HTTP  | reachable / model_id |
-| `weknora agent check <agent-id>`  | 1+N HTTP | also probes every KB in the agent's scope |
+| `gamelib kb status <kb-id>`     | 1 HTTP    | live counts / processing flag |
+| `gamelib kb check <kb-id>`      | 1+N HTTP  | adds `failed_count` via doc-list page-walk |
+| `gamelib agent status <agent-id>` | 1 HTTP  | reachable / model_id |
+| `gamelib agent check <agent-id>`  | 1+N HTTP | also probes every KB in the agent's scope |
 
-`weknora doc wait <doc-id> [<doc-id>...]` blocks until each document
+`gamelib doc wait <doc-id> [<doc-id>...]` blocks until each document
 reaches a terminal `parse_status` (completed or failed). Exit codes:
 0 (all completed), 1 (any failed), 124 (`--timeout` reached), 130
 (Ctrl-C / SIGTERM). Multi-target is polled concurrently (max 5 in
@@ -435,7 +433,7 @@ flight; pipe through `xargs -P` for more).
 # Run unit + contract tests
 go test ./...
 
-# Run the real-server e2e suite (requires WEKNORA_E2E_HOST + token env vars)
+# Run the real-server e2e suite (requires GAMELIB_E2E_HOST + token env vars)
 go test -tags acceptance_e2e ./acceptance/e2e/...
 
 # Static analysis

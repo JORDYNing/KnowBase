@@ -1048,7 +1048,7 @@ func (r *knowledgeRepository) SearchKnowledge(
 	return knowledges, hasMore, nil
 }
 
-// SearchKnowledgeInScopes searches knowledge items by keyword within the given (tenant_id, kb_id) scopes (e.g. own + shared KBs).
+// SearchKnowledgeInScopes searches within the caller-authorized (tenant_id, kb_id) scopes.
 func (r *knowledgeRepository) SearchKnowledgeInScopes(
 	ctx context.Context,
 	scopes []types.KnowledgeSearchScope,

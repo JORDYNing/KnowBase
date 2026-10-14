@@ -40,16 +40,9 @@ XLSX 表格分析和表格摘要会跳过只有格式、没有单元格内容的
 
 ## 设置资料和工具范围
 
-智能体可以使用全部、指定或禁用的知识库及技能范围。对话中的提及用于选择本轮资料或提示优先技能，不能绕过已有授权；输入框的 @技能、@MCP 菜单只列出本轮实际运行的智能体可用的资源，使用共享智能体时列出来源空间的技能和该智能体显式选择的 MCP 服务。联网搜索同时受智能体配置和本轮请求开关约束。
+智能体可以使用全部、指定或禁用的知识库及技能范围。对话中的提及用于选择本轮资料或提示优先技能，不能绕过已有授权；输入框的 @技能、@MCP 菜单只列出本轮实际运行的智能体可用的资源。联网搜索同时受智能体配置和本轮请求开关约束。
 
-通过组织共享智能体后，接收方在授权范围内使用来源空间的模型与资料。共享智能体为只读，接收方不能修改其配置。接收方使用时：
-
-- 始终使用智能体配置的模型，请求里的 `summary_model_id` 会被忽略；
-- 未设置 MCP 选择模式的智能体不使用 MCP 服务；
-- 对话记录写入接收方自己空间的对话记录知识库，不会写入来源空间；
-- 接收方能看到智能体的能力与资源范围（模型、知识库、MCP、联网搜索），看不到提示词和创建人。
-
-启用了技能的智能体共享后，技能在来源空间的沙箱中运行，并带上管理员为技能配置的环境变量，成员可以让智能体读出这些值。共享规则见[空间与权限](01-tenant-auth.md)。
+知识库、模型、MCP 服务和技能均从当前授权空间解析，智能体配置不能授予跨空间访问权。
 
 ## 处理工具审批与授权
 
@@ -115,17 +108,7 @@ smart-reasoning 下还可选**类型预设**（`Config.AgentType`，定义在 `c
 
 Handler 层（`internal/handler/custom_agent.go`）提供 `CreateAgent`、`GetAgent`、`ListAgents`、`UpdateAgent`、`DeleteAgent`、`CopyAgent`、`GetPlaceholders`（返回 `types.PlaceholdersByField(PromptFieldAgentSystemPrompt)` 的占位符清单）、`GetAgentTypePresets`（带 i18n 的预设列表）、`GetSuggestedQuestions`。创建/更新时经 `authorizeAgentKnowledgeScope` 校验受限 API Key 的 KB 范围：`kb_selection_mode: all` 对 KB 受限 key 直接 403，`selected` 逐一鉴权。
 
-运行时映射：`buildAgentConfig`（`session_agent_qa.go`）把 `CustomAgentConfig` 转换为引擎的 `types.AgentConfig`（`internal/types/agent.go`），并叠加：web 搜索需 Agent 与请求同时开启（`customAgent.Config.WebSearchEnabled && req.WebSearchEnabled`）、web provider 回退租户默认、`SearchTargets` 由 KB/@文档/@标签 scope 统一构建、`MaxContextTokens` 兜底 200000、`@Skill` 与 `@MCP` 的每轮优先提示（不移除其他已配置资源）（共享 Agent 的 @MCP 只能落在 Agent 预设集合内）。另外只有当 `search_knowledge` 实际可用时才要求配置 rerank 模型（`agentRequiresRerankModel`，旧名 `knowledge_search` / `grep_chunks` 经 `SuccessorToolName` 归一后同样计入）。
-
-#### 分享机制（agent_share） {#_7-3-分享机制-agent-share}
-
-`internal/application/service/agent_share.go`：Agent 可分享给**组织（Organization）**：
-
-- 仅 Agent 属主租户可分享（`ErrNotAgentOwner`）；分享者所在租户须为组织 Editor+ 成员；
-- 分享前校验 Agent 配置完整：必须有 `model_id`；若 `search_knowledge` 在其工具集内（或工具集为空回退默认集）且 KB scope 未禁用，还必须有 `rerank_model_id`，否则 `ErrAgentNotConfigured`；
-- **权限强制为只读**：`permission = types.OrgRoleViewer`（跨租户编辑不在 v1 范围）；重复分享则幂等更新；
-- 接收方租户可通过 `TenantDisabledSharedAgentRepository` 把某个共享 Agent 在本租户禁用；
-- 使用共享 Agent 对话时（`session_agent_qa.go`），检索与模型 scope 切到 **Agent 属主租户**（`resolveRetrievalTenantID`），因此共享方的 KB 对使用方可用，而使用方自己的 MCP @提及会被限制在 Agent 预设内。
+运行时映射：`buildAgentConfig`（`session_agent_qa.go`）把 `CustomAgentConfig` 转换为引擎的 `types.AgentConfig`（`internal/types/agent.go`），并叠加：web 搜索需 Agent 与请求同时开启（`customAgent.Config.WebSearchEnabled && req.WebSearchEnabled`）、web provider 回退租户默认、`SearchTargets` 由 KB/@文档/@标签 scope 统一构建、`MaxContextTokens` 兜底 200000、`@Skill` 与 `@MCP` 的每轮优先提示（不移除其他已配置资源）。另外只有当 `search_knowledge` 实际可用时才要求配置 rerank 模型（`agentRequiresRerankModel`，旧名 `knowledge_search` / `grep_chunks` 经 `SuccessorToolName` 归一后同样计入）。
 
 ### 内置 Agent（config/builtin_agents.yaml） {#_8-内置-agent-config-builtin-agents-yaml}
 
@@ -487,7 +470,7 @@ var ToolCapabilityRequirements = map[string]ToolRequirement{
 
 **运行时启停逻辑**（`agent_service.go` 的 `registerTools`）：
 
-1. 起点是 `config.AllowedTools`（用户可编辑的白名单，preset 只做初始填充），先经 `NormalizeAllowedTools` 把旧工具名改写为新名；为空回退 `DefaultAllowedTools()`；共享智能体的只读调用、或作用域内没有可写 Wiki 库时，移除 Wiki 写工具（`wiki_write_page`、`wiki_replace_text`、`wiki_rename_page`、`wiki_delete_page`、`wiki_flag_issue`、`wiki_update_issue`）；
+1. 起点是 `config.AllowedTools`（用户可编辑的白名单，preset 只做初始填充），先经 `NormalizeAllowedTools` 把旧工具名改写为新名；为空回退 `DefaultAllowedTools()`；调用者为只读角色、或作用域内没有可写 Wiki 库时，移除 Wiki 写工具（`wiki_write_page`、`wiki_replace_text`、`wiki_rename_page`、`wiki_delete_page`、`wiki_flag_issue`、`wiki_update_issue`）；
 2. 若本轮**没有任何知识检索 scope**（Pure Agent 模式），过滤掉全部 KB/Wiki/数据工具；若同时未开 Web 搜索，连 `todo_write` 也一并去掉；
 3. 按运行时开关注入：开启联网搜索时追加 `web_search` + `web_fetch`，记忆可用时追加 `search_memory`（白名单里写了也会先剔除）；
 4. **硬安全网**：扫描 `SearchTargets` 中各 KB 的真实能力——没有 wiki KB 就丢弃全部 wiki 工具；没有 vector/keyword KB 就丢弃 `search_knowledge`、`query_knowledge_graph`、`database_query`，此时若也没有 wiki KB 还会丢弃 `read_document`、`list_documents`；没有启用图谱的 KB 就丢弃 `query_knowledge_graph`（防止配置陈旧：先勾了 wiki 工具、后换成非 wiki KB）；
@@ -640,7 +623,7 @@ const (
 
 `Handler.AgentQA` 按以下顺序选择执行模式：
 
-1. 解析请求并经 `resolveAgent` 解析 `agent_id` 对应的 `CustomAgent`（含内置与共享 Agent 的权限校验）；
+1. 解析请求并经 `resolveAgent` 解析 `agent_id` 对应的 `CustomAgent`（含内置智能体和当前空间自定义智能体的权限校验）；
 2. **`CustomAgent.IsAgentMode()` 优先于请求里的 `agent_enabled` 字段**——即 `Config.AgentMode == "smart-reasoning"` 才走 Agent，`quick-answer` 型 Agent 即使打到 `/agent-chat` 也会被降级：
 3. 若 agent 模式成立但 `customAgent == nil`（典型场景：前端 localStorage 里 `selectedAgentId` 被清空但开关残留），提前返回 400 `"agent_id is required when agent mode is enabled"`，避免异步流里报晦涩错误；
 4. 成立 → `executeQA(reqCtx, qaModeAgent, true)`；否则打日志 `"Agent mode disabled, delegating to normal mode"` 并走 `qaModeNormal`。
@@ -658,7 +641,7 @@ const (
 | 结果持久化 | 单条回答 | 回答 + `AgentSteps`（思考/工具调用树），SSE 可回放 |
 | KB 兼容性 | 隐式要求 vector 或 keyword 索引（`quickAnswerKBFilter`） | 按 `allowed_tools` 的 capabilities 派生 |
 
-`sessionService.AgentQA`（`internal/application/service/session_agent_qa.go`）在进入引擎前还处理：共享 Agent 的租户切换、视觉模型路由（模型支持 vision 则直传图片，否则把 VLM 描述并入 query）、引用上下文/附件内容并入 query、rerank 模型按需初始化等；执行是异步的，事件经 EventBus 流回 Handler 层。
+`sessionService.AgentQA`（`internal/application/service/session_agent_qa.go`）在进入引擎前还处理：当前空间授权校验、视觉模型路由（模型支持 vision 则直传图片，否则把 VLM 描述并入 query）、引用上下文/附件内容并入 query、rerank 模型按需初始化等；执行是异步的，事件经 EventBus 流回 Handler 层。
 
 ### 关键常量速查 {#_11-关键常量速查}
 

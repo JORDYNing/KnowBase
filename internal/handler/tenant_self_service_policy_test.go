@@ -148,3 +148,41 @@ func TestAuthMeProjectsTenantCreationCapability(t *testing.T) {
 		t.Fatalf("response missing capability: %s", w.Body.String())
 	}
 }
+
+func TestAuthMePreservesOnlyPlatformAdministratorCreationCapability(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tt := range []struct {
+		name           string
+		role           types.TenantRole
+		catalogManager bool
+		want           bool
+	}{
+		{"ordinary owner", types.TenantRoleOwner, false, false},
+		{"ordinary admin", types.TenantRoleAdmin, false, false},
+		{"platform administrator", types.TenantRoleViewer, true, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &AuthHandler{
+				userService:      &tenantPolicyUserService{user: &types.User{ID: "user", CanAccessAllTenants: tt.catalogManager}},
+				configInfo:       &config.Config{Tenant: &config.TenantConfig{}},
+				systemSettingSvc: &tenantPolicySettingService{enabled: true},
+			}
+			r := gin.New()
+			r.GET("/auth/me", h.GetCurrentUser)
+			request := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+			request = request.WithContext(context.WithValue(request.Context(), types.TenantRoleContextKey, tt.role))
+			recorder := httptest.NewRecorder()
+			r.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+			want := `"can_create_tenant":false`
+			if tt.want {
+				want = `"can_create_tenant":true`
+			}
+			if !strings.Contains(recorder.Body.String(), want) {
+				t.Fatalf("capability mismatch: %s", recorder.Body.String())
+			}
+		})
+	}
+}

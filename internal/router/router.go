@@ -40,8 +40,6 @@ type RouterParams struct {
 	MessageService               interfaces.MessageService
 	ModelService                 interfaces.ModelService
 	EvaluationService            interfaces.EvaluationService
-	KBShareService               interfaces.KBShareService
-	AgentShareService            interfaces.AgentShareService
 	KBHandler                    *handler.KnowledgeBaseHandler
 	KnowledgeHandler             *handler.KnowledgeHandler
 	TenantHandler                *handler.TenantHandler
@@ -50,6 +48,7 @@ type RouterParams struct {
 	TenantMemberService          interfaces.TenantMemberService
 	TenantMemberHandler          *handler.TenantMemberHandler
 	TenantInvitationHandler      *handler.TenantInvitationHandler
+	TenantJoinRequestHandler     *handler.TenantJoinRequestHandler
 	AuditLogHandler              *handler.AuditLogHandler
 	AuditLogService              interfaces.AuditLogService
 	ChunkHandler                 *handler.ChunkHandler
@@ -80,7 +79,6 @@ type RouterParams struct {
 	CustomAgentHandler           *handler.CustomAgentHandler
 	UserFavoriteHandler          *handler.UserResourceFavoriteHandler
 	SkillHandler                 *handler.SkillHandler
-	OrganizationHandler          *handler.OrganizationHandler
 	IMHandler                    *handler.IMHandler
 	EmbedChannelHandler          *handler.EmbedChannelHandler
 	EmbedChannelService          interfaces.EmbedChannelService
@@ -245,8 +243,6 @@ func NewRouter(params RouterParams) *gin.Engine {
 			params.KBService,
 			params.KnowledgeService,
 			params.ChunkService,
-			params.KBShareService,
-			params.AgentShareService,
 		)
 
 		// API-key gate: single authority for X-API-Key principals. Runs
@@ -259,12 +255,11 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterAuthRoutes(v1, params.AuthHandler, rbacGuards)
 		RegisterTenantRoutes(v1, params.TenantHandler, params.TenantMemberHandler, params.TenantInvitationHandler, params.AuditLogHandler, rbacGuards)
 		RegisterMyInvitationRoutes(v1, params.TenantInvitationHandler)
+		RegisterTenantJoinRequestRoutes(v1, params.TenantJoinRequestHandler, rbacGuards)
 		RegisterKnowledgeBaseRoutes(v1, params.KBHandler, rbacGuards)
 		RegisterImageAttrRoutes(v1, params.KBHandler, rbacGuards)
 		RegisterKnowledgeBaseActivityRoutes(v1, params.AuditLogHandler, rbacGuards)
-		// KB-scoped image proxy: lets tenants render images embedded in
-		// org-shared / agent-visible KB content, which the tenant-scoped
-		// /files route cannot serve because it enforces same-tenant paths.
+		// Resolve KB file access from the current workspace and exact resource binding.
 		serveKBScopedFiles(
 			v1,
 			rbacGuards,
@@ -273,25 +268,12 @@ func NewRouter(params RouterParams) *gin.Engine {
 			params.StorageBackendResolver,
 			params.ResourceCatalog,
 		)
-		// Message-scoped image proxy: shared-agent replies belong to the
-		// caller's session but may reference resources stored in the agent's
-		// source workspace. Authorization is derived from the persisted message,
-		// never from a client-provided workspace ID. Replies produced by the
-		// caller's own agent over an org-shared KB fall back to the KB share
-		// relation instead (#3022).
+		// Resolve message files from persisted references and session ownership.
 		serveMessageScopedFiles(
-			v1,
-			rbacGuards,
-			params.MessageService,
-			params.AgentShareService,
-			params.TenantService,
-			params.FileService,
-			params.StorageBackendResolver,
-			params.ResourceCatalog,
-			params.KBShareService,
-			params.KBService,
-			params.KnowledgeService,
+			v1, rbacGuards, params.MessageService, params.TenantService,
+			params.FileService, params.StorageBackendResolver, params.ResourceCatalog,
 		)
+
 		RegisterKnowledgeTagRoutes(v1, params.TagHandler, rbacGuards)
 		RegisterKnowledgeRoutes(v1, params.KnowledgeHandler, rbacGuards)
 		RegisterFAQRoutes(v1, params.FAQHandler, rbacGuards)
@@ -318,7 +300,6 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterCustomAgentRoutes(v1, params.CustomAgentHandler, rbacGuards)
 		RegisterUserFavoriteRoutes(v1, params.UserFavoriteHandler, rbacGuards)
 		RegisterSkillRoutes(v1, params.SkillHandler, rbacGuards)
-		RegisterOrganizationRoutes(v1, params.OrganizationHandler, rbacGuards)
 		RegisterIMChannelRoutes(v1, params.IMHandler, rbacGuards)
 		RegisterEmbedChannelRoutes(v1, params.EmbedChannelHandler, rbacGuards)
 		RegisterMCPEndpointRoutes(v1, params.MCPEndpointHandler, rbacGuards)

@@ -134,7 +134,8 @@ func (r *chunkRepository) ListChunksByID(
 	return chunks, nil
 }
 
-// ListChunksByIDOnly retrieves multiple chunks by their IDs without tenant filter (for shared KB resolution).
+// ListChunksByIDOnly retrieves authoritative chunk IDs without a tenant filter.
+// Callers must authorize the persisted resource owners before using the rows.
 func (r *chunkRepository) ListChunksByIDOnly(ctx context.Context, ids []string) ([]*types.Chunk, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -379,9 +380,8 @@ func (r *chunkRepository) ListChunksByParentIDs(
 	return chunks, nil
 }
 
-// ListChunksByParentIDsOnly retrieves chunks by parent IDs without tenant
-// filter, for expansions whose parent IDs come from org-shared KB retrieval
-// results owned by another workspace (#3342).
+// ListChunksByParentIDsOnly retrieves children of already-authorized parent
+// chunk IDs without inferring ownership from the ambient execution tenant.
 func (r *chunkRepository) ListChunksByParentIDsOnly(
 	ctx context.Context, parentIDs []string,
 ) ([]*types.Chunk, error) {

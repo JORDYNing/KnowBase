@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/Tencent/WeKnora/internal/application/access"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	// Referenced only by the @Failure annotations (errors.AppError); swag
 	// resolves annotation types through the file's imports.
@@ -24,11 +23,8 @@ type usableSkillLister interface {
 type SkillHandler struct {
 	usableSkills usableSkillLister
 	catalog      skillCatalogService
-	// agents resolves a shared agent so the @ picker can list the skills that
 	// agent can actually invoke, which live in ITS OWNER's workspace. Nil
-	// disables the shared-agent path (and with it the @Skill picker for shared
 	// agents) rather than falling back to the caller's own workspace.
-	agents access.SharedAgentLookup
 }
 
 type skillCatalogService interface {
@@ -46,12 +42,10 @@ type skillCatalogService interface {
 func NewSkillHandler(
 	usableSkills usableSkillLister,
 	catalog skillCatalogService,
-	agents access.SharedAgentLookup,
 ) *SkillHandler {
 	return &SkillHandler{
 		usableSkills: usableSkills,
 		catalog:      catalog,
-		agents:       agents,
 	}
 }
 
@@ -67,24 +61,13 @@ type SkillInfoResponse struct {
 // @Tags         Skills
 // @Accept       json
 // @Produce      json
-// @Param        sandbox_config_id      query  string  false  "Sandbox config ID; ignored for a shared agent"
-// @Param        agent_id               query  string  false  "Agent ID; needs agent_source_tenant_id"
-// @Param        agent_source_tenant_id query  int     false  "Shared agent source workspace"
+// @Param        agent_id               query  string  false  "Agent ID in the current workspace"
 // @Success      200  {object}  map[string]interface{}  "Skills列表"
-// @Failure      403  {object}  errors.AppError         "无权使用该共享智能体"
+// @Failure      403  {object}  errors.AppError         "无权访问资源"
 // @Security     Bearer
 // @Security     ApiKeyAuth
 // @Router       /skills [get]
 func (h *SkillHandler) ListSkills(c *gin.Context) {
-	// A shared agent runs its skills in its OWNER's workspace, on the sandbox
-	// config that agent selected. Reading either from the caller's workspace
-	// (or from the query string) would list nothing, which is why the @Skill
-	// picker used to come up empty for every shared agent.
-	agent, err := sharedAgentPickerScope(c, h.agents)
-	if err != nil {
-		_ = c.Error(err)
-		return
-	}
 
 	configID := c.Query("sandbox_config_id")
 	tenantID := sandboxConfigTenantID(c)
@@ -92,14 +75,6 @@ func (h *SkillHandler) ListSkills(c *gin.Context) {
 	// invoke no skill at all, so nothing is looked up.
 	var allowed map[string]bool
 	anyAllowed := true
-	if agent != nil {
-		// Take the config from the agent, never from the query: the caller
-		// could otherwise name any config id in the owner's workspace and
-		// enumerate skills the shared agent does not use.
-		configID = agent.Config.SandboxConfigID
-		tenantID = agent.TenantID
-		allowed, anyAllowed = sharedAgentSkillScope(agent)
-	}
 
 	if configID == "" || tenantID == 0 || !anyAllowed || h.usableSkills == nil {
 		c.JSON(http.StatusOK, gin.H{

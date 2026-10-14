@@ -350,8 +350,6 @@ func (s *temporaryDocumentService) Process(ctx context.Context, task *asynq.Task
 	if err := s.repo.MarkProcessing(ctx, payload.TenantID, payload.DocumentID, startedAt); err != nil {
 		return err
 	}
-	// The attachment row and file remain scoped to payload.TenantID, while
-	// parser/model dependencies may belong to a verified shared-agent source.
 	resourceTenantID := payload.TenantID
 	var options types.TemporaryDocumentCreateOptions
 	if json.Unmarshal(document.ProcessingOptions, &options) == nil && options.ResourceTenantID != 0 {

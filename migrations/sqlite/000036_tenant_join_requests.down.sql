@@ -1,0 +1,3 @@
+-- Retain durable application history and the once-per-workspace bootstrap
+-- marker on rollback. Older application versions ignore this additive table;
+-- deleting the marker would allow a later login to restore revoked ownership.

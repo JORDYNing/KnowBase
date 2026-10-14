@@ -14,13 +14,6 @@ import (
 	secutils "github.com/Tencent/WeKnora/internal/utils"
 )
 
-// FAQHandler handles FAQ knowledge base operations.
-//
-// All KB-access checks (own / org-shared / via shared agent) are now
-// performed by the route-level g.KBAccessRead / g.KBAccessWrite
-// guards in router.go — the guard rewrites c.Request.Context() to
-// carry the effective tenant ID for the duration of the handler, so
-// the handler reads tenant from context the way it always did.
 type FAQHandler struct {
 	knowledgeService interfaces.KnowledgeService
 	kbService        interfaces.KnowledgeBaseService

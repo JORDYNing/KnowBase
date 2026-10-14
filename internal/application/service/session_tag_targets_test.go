@@ -36,7 +36,7 @@ type tagTargetKnowledgeService struct {
 	tagIDs     map[string][]string
 }
 
-func (s *tagTargetKnowledgeService) GetKnowledgeBatchWithSharedAccess(
+func (s *tagTargetKnowledgeService) GetAuthorizedKnowledgeBatch(
 	_ context.Context,
 	_ uint64,
 	ids []string,

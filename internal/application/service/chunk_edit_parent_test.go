@@ -182,7 +182,7 @@ func TestUpdateDocumentChunkPreservesGeneratedQuestionsAcrossRevision(t *testing
 		},
 		Caller:            types.CallerFromContext(ctx),
 		EffectiveTenantID: 1,
-		Permission:        types.OrgRoleEditor,
+		Permission:        types.KBPermissionWrite,
 	}).Context(
 		ctx,
 	)

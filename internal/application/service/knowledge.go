@@ -68,7 +68,6 @@ type knowledgeService struct {
 	taskInspector   interfaces.TaskInspector
 	graphEngine     interfaces.RetrieveGraphRepository
 	redisClient     *redis.Client
-	kbShareService  interfaces.KBShareService
 	imageResolver   *docparser.ImageResolver
 	taskPendingRepo interfaces.TaskPendingOpsRepository
 
@@ -114,7 +113,6 @@ func NewKnowledgeService(
 	retrieveEngine interfaces.RetrieveEngineRegistry,
 	ownership retriever.TenantStoreOwnership,
 	redisClient *redis.Client,
-	kbShareService interfaces.KBShareService,
 	imageResolver *docparser.ImageResolver,
 	wikiRepo interfaces.WikiPageRepository,
 	wikiService interfaces.WikiPageService,
@@ -143,7 +141,6 @@ func NewKnowledgeService(
 		retrieveEngine:  retrieveEngine,
 		ownership:       ownership,
 		redisClient:     redisClient,
-		kbShareService:  kbShareService,
 		imageResolver:   imageResolver,
 		wikiRepo:        wikiRepo,
 		wikiService:     wikiService,
@@ -897,15 +894,13 @@ func (s *knowledgeService) GetKnowledgeBatch(ctx context.Context,
 	return s.repo.GetKnowledgeBatch(ctx, tenantID, ids)
 }
 
-// GetKnowledgeBatchWithSharedAccess retrieves knowledge by IDs, including items from shared KBs the user has access to.
-// Used when building search targets so that @mentioned files from shared KBs are included.
-func (s *knowledgeService) GetKnowledgeBatchWithSharedAccess(ctx context.Context,
+func (s *knowledgeService) GetAuthorizedKnowledgeBatch(ctx context.Context,
 	tenantID uint64, ids []string,
 ) ([]*types.Knowledge, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	permissions := kbReadPermissions(ctx, s.kbShareService)
+	permissions := kbReadPermissions(ctx)
 	rows, err := s.repo.GetKnowledgeBatch(ctx, tenantID, ids)
 	if err != nil {
 		return nil, err
@@ -916,7 +911,7 @@ func (s *knowledgeService) GetKnowledgeBatchWithSharedAccess(ctx context.Context
 		if k == nil || foundSet[k.ID] {
 			return
 		}
-		allowed, err := permissions.Check(k.KnowledgeBaseID, k.TenantID, types.OrgRoleViewer)
+		allowed, err := permissions.Check(k.KnowledgeBaseID, k.TenantID, types.KBPermissionRead)
 		if err == nil && allowed {
 			ownList = append(ownList, k)
 			foundSet[k.ID] = true
@@ -928,6 +923,7 @@ func (s *knowledgeService) GetKnowledgeBatchWithSharedAccess(ctx context.Context
 			foundSet[k.ID] = true
 		}
 	}
+
 	for _, id := range ids {
 		if foundSet[id] {
 			continue
@@ -941,6 +937,7 @@ func (s *knowledgeService) GetKnowledgeBatchWithSharedAccess(ctx context.Context
 		}
 		foundSet[id] = true
 	}
+
 	return ownList, nil
 }
 
@@ -1150,8 +1147,6 @@ func (s *knowledgeService) UpdateKnowledgeTagBatch(
 	return nil
 }
 
-// SearchKnowledge searches knowledge items by keyword across the tenant and shared knowledge bases.
-// fileTypes: optional list of file extensions to filter by (e.g., ["csv", "xlsx"])
 func (s *knowledgeService) SearchKnowledge(ctx context.Context, keyword string, offset, limit int, fileTypes []string) ([]*types.Knowledge, bool, int64, error) {
 	caller := types.CallerFromContext(ctx)
 	tenantID := caller.TenantID
@@ -1172,36 +1167,26 @@ func (s *knowledgeService) SearchKnowledge(ctx context.Context, keyword string, 
 		}
 	}
 
-	// Shared knowledge bases (document type only). Plan 3 of #1303 keys
-	// the share lookup on (tenantID, callerTenantRole); userID is no
-	// longer load-bearing for org-share access.
-	if s.kbShareService != nil {
-		if caller.UserID != "" {
-			callerTenantRole := caller.Role
-			sharedList, err := s.kbShareService.ListSharedKnowledgeBases(ctx, tenantID, callerTenantRole)
-			if err == nil {
-				for _, info := range sharedList {
-					if info != nil && info.KnowledgeBase != nil && info.KnowledgeBase.Type == types.KnowledgeBaseTypeDocument {
-						scopes = append(scopes, types.KnowledgeSearchScope{
-							TenantID: info.SourceTenantID,
-							KBID:     info.KnowledgeBase.ID,
-						})
-					}
-				}
-			}
-		}
-	}
-
 	if len(scopes) == 0 {
 		return nil, false, 0, nil
 	}
 	return s.repo.SearchKnowledgeInScopes(ctx, scopes, keyword, offset, limit, fileTypes)
 }
 
-// SearchKnowledgeForScopes searches knowledge within the given scopes (e.g. for shared agent context).
 func (s *knowledgeService) SearchKnowledgeForScopes(ctx context.Context, scopes []types.KnowledgeSearchScope, keyword string, offset, limit int, fileTypes []string) ([]*types.Knowledge, bool, int64, error) {
 	if len(scopes) == 0 {
 		return nil, false, 0, nil
 	}
+	permissions := kbReadPermissions(ctx)
+	for _, scope := range scopes {
+		allowed, err := permissions.Check(scope.KBID, scope.TenantID, types.KBPermissionRead)
+		if err != nil {
+			return nil, false, 0, err
+		}
+		if !allowed {
+			return nil, false, 0, werrors.NewForbiddenError("无权访问该知识库")
+		}
+	}
+
 	return s.repo.SearchKnowledgeInScopes(ctx, scopes, keyword, offset, limit, fileTypes)
 }

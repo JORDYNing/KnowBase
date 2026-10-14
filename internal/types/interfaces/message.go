@@ -69,10 +69,6 @@ type MessageService interface {
 	// ctx; query.TenantID and query.UserID are overwritten.
 	ListArtifactLibrary(ctx context.Context, query *types.ArtifactLibraryQuery) (*types.PageResult, error)
 
-	// DeleteSessionArtifact tombstones a skill-generated file (and optionally
-	// every version of it) in a session the caller owns, and reports the blobs
-	// whose bytes the caller should now reclaim. Shared-agent read access does
-	// not carry delete rights.
 	DeleteSessionArtifact(
 		ctx context.Context, req *types.ArtifactDeleteRequest,
 	) (*types.ArtifactDeleteResult, error)

@@ -6,7 +6,6 @@ package access
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -32,9 +31,9 @@ type KBAccess struct {
 	KnowledgeBase     *types.KnowledgeBase
 	Caller            types.Caller
 	EffectiveTenantID uint64
-	Permission        types.OrgMemberRole
+	Permission        types.KBPermission
 	// A read resolution must not mint a write grant even for the KB owner.
-	operationPermission types.OrgMemberRole
+	operationPermission types.KBPermission
 }
 
 // Context scopes resource operations without changing the authenticated caller.
@@ -70,36 +69,16 @@ func (a *KBAccess) WithGrant(ctx context.Context) context.Context {
 	return context.WithValue(types.WithCaller(ctx, caller), types.KBGrantsContextKey, grants)
 }
 
-// KBShareLookup resolves organization sharing with the caller role cap.
-type KBShareLookup interface {
-	CheckTenantKBPermission(context.Context, string, uint64, types.TenantRole) (types.OrgMemberRole, bool, error)
-}
-
-// SharedAgentLookup verifies access to a particular shared agent.
-type SharedAgentLookup interface {
-	GetSharedAgentForTenant(context.Context, uint64, types.TenantRole, string, ...uint64) (*types.CustomAgent, error)
-}
-
-// AgentShareLookup also supports read access through any reachable agent.
-type AgentShareLookup interface {
-	SharedAgentLookup
-	TenantCanAccessKBViaSomeSharedAgent(context.Context, uint64, types.TenantRole, *types.KnowledgeBase) (bool, error)
-}
-
-// ResolveKB authorizes a server-loaded KB (or a document's persisted KB/tenant
-// reference). Its tenant is authoritative; resolving the owner from a share
-// record again would add a lookup and a second source of truth. It never treats
-// an effective resource tenant as the caller.
-// Share lookup errors do not grant access; an independent agent grant may still
-// allow reading. An explicit agent selector never falls back to another agent.
-func ResolveKB(ctx context.Context, request KBRequest, kb *types.KnowledgeBase, required types.OrgMemberRole,
-	shares KBShareLookup, agents AgentShareLookup,
-) (*KBAccess, error) {
+// ResolveKB accepts only a server-loaded resource in the caller's tenant.
+func ResolveKB(ctx context.Context, request KBRequest, kb *types.KnowledgeBase, required types.KBPermission) (*KBAccess, error) {
 	if request.Caller.TenantID == 0 {
 		return nil, ErrUnauthorized
 	}
 	if kb == nil || kb.ID == "" {
 		return nil, ErrNotFound
+	}
+	if !required.IsValid() {
+		return nil, ErrForbidden
 	}
 	if err := types.AuthorizeTenantAPIKeyKnowledgeBases(ctx, kb.ID); err != nil {
 		return nil, err
@@ -108,49 +87,8 @@ func ResolveKB(ctx context.Context, request KBRequest, kb *types.KnowledgeBase, 
 	if caller, ok := ctx.Value(types.CallerContextKey).(types.Caller); ok && caller != request.Caller {
 		return nil, ErrForbidden
 	}
-	grant := func(permission types.OrgMemberRole) (*KBAccess, error) {
-		return &KBAccess{
-			KnowledgeBase: kb, Caller: request.Caller,
-			EffectiveTenantID: kb.TenantID, Permission: permission, operationPermission: required,
-		}, nil
-	}
-	if kb.TenantID == request.Caller.TenantID {
-		return grant(types.OrgRoleAdmin)
-	}
-	if shares != nil {
-		permissions := NewKBSharePermissions(ctx, shares, request.Caller.TenantID, request.Caller.Role)
-		permission, shared, err := permissions.Permission(kb.ID)
-		if err == nil && shared && permission.HasPermission(required) {
-			return grant(permission)
-		}
-	}
-	if required != types.OrgRoleViewer || agents == nil {
+	if kb.TenantID != request.Caller.TenantID {
 		return nil, ErrForbidden
 	}
-	if request.AgentID != "" {
-		source, err := types.ParseAgentSourceTenantID(request.AgentSourceTenantID)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %s", ErrInvalidAgentSource, err)
-		}
-		agent, err := agents.GetSharedAgentForTenant(
-			ctx,
-			request.Caller.TenantID,
-			request.Caller.Role,
-			request.AgentID,
-			source,
-		)
-		if err == nil && types.SharedAgentIncludesKB(agent, kb) {
-			return grant(types.OrgRoleViewer)
-		}
-	} else {
-		allowed,
-			err := agents.TenantCanAccessKBViaSomeSharedAgent(ctx,
-			request.Caller.TenantID,
-			request.Caller.Role,
-			kb)
-		if err == nil && allowed {
-			return grant(types.OrgRoleViewer)
-		}
-	}
-	return nil, ErrForbidden
+	return &KBAccess{KnowledgeBase: kb, Caller: request.Caller, EffectiveTenantID: kb.TenantID, Permission: types.KBPermissionAdmin, operationPermission: required}, nil
 }

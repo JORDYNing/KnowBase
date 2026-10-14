@@ -92,13 +92,13 @@ with input.confirmation_required. Surface the prompt to the user and only
 retry with -y after explicit approval. Other failure codes: resource.not_found
 (agent id or KB id), auth.forbidden, input.invalid_argument (no flags, bad file).`
 
-const agentEditExample = `  weknora agent update ag_abc --name "Renamed" -y
-  weknora agent update ag_abc --description "" -y              # clear description
-  weknora agent update ag_abc --add-kb kb_new --remove-kb kb_old -y
-  weknora agent update ag_abc --system-prompt-file ./prompt.md -y
-  weknora agent update ag_abc --config-file ./tuned.yaml --temperature 0.9 -y`
+const agentEditExample = `  gamelib agent update ag_abc --name "Renamed" -y
+  gamelib agent update ag_abc --description "" -y              # clear description
+  gamelib agent update ag_abc --add-kb kb_new --remove-kb kb_old -y
+  gamelib agent update ag_abc --system-prompt-file ./prompt.md -y
+  gamelib agent update ag_abc --config-file ./tuned.yaml --temperature 0.9 -y`
 
-// NewCmdEdit builds `weknora agent update <agent-id>`.
+// NewCmdEdit builds `gamelib agent update <agent-id>`.
 func NewCmdEdit(f *cmdutil.Factory) *cobra.Command {
 	opts := &EditOptions{}
 	var systemPromptFile, configFile string
@@ -219,7 +219,7 @@ func NewCmdEdit(f *cmdutil.Factory) *cobra.Command {
 			// Build the retry command from the flags the user actually passed.
 			// Include list-shaped and file-path flags so exit-10 retry_argv reproduces
 			// the original update (BuildRetryArgv expands StringSlice as repeats).
-			retryCmd := cmdutil.BuildRetryArgv(cmd, []string{"weknora", "agent", "update", opts.AgentID},
+			retryCmd := cmdutil.BuildRetryArgv(cmd, []string{"gamelib", "agent", "update", opts.AgentID},
 				"name", "description", "model", "system-prompt", "system-prompt-file",
 				"agent-mode", "rerank-model", "temperature", "add-kb", "remove-kb",
 				"kb-selection-mode", "config-file", "format")
@@ -272,9 +272,9 @@ func NewCmdEdit(f *cmdutil.Factory) *cobra.Command {
 		UsedFor:       "surgically update a custom agent's configuration",
 		RequiredFlags: []string{"<agent-id> (positional)", "at least one update flag (--name, --add-kb, etc.)"},
 		Examples: []string{
-			"weknora agent update ag_abc --name \"Renamed\"",
-			"weknora agent update ag_abc --add-kb kb_new --remove-kb kb_old",
-			"weknora agent update ag_abc --config-file ./tuned.yaml",
+			"gamelib agent update ag_abc --name \"Renamed\"",
+			"gamelib agent update ag_abc --add-kb kb_new --remove-kb kb_old",
+			"gamelib agent update ag_abc --config-file ./tuned.yaml",
 		},
 		Output: "envelope.data is the updated Agent object (id, name, config) after the update is applied",
 		Warnings: []string{

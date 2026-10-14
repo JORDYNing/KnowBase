@@ -1,6 +1,6 @@
 # 快速上手
 
-通过注册账号、创建知识库、配置模型、上传文档和提问，可以完成首次知识库问答，并在回答中查看原文引用。以下步骤使用 Web 界面，文末提供对应的 API 示例。
+通过飞书登录、获批加入团队空间、创建知识库、配置模型、上传文档和提问，可以完成首次知识库问答，并在回答中查看原文引用。以下步骤使用 Web 界面，文末提供对应的 API 示例。
 
 使用前需先完成[安装部署](02-installation.md)，并准备可用的对话模型和向量模型。
 
@@ -10,26 +10,23 @@
 - 准备模型连接信息：本地 Ollama（容器内默认地址 `http://host.docker.internal:11434`），或者任意 OpenAI 兼容服务的 `base_url` + `api_key`。至少需要一个对话模型和一个向量（embedding）模型；
 - 检查后端健康状态：`curl http://localhost:8080/health` 返回 `{"status":"ok"}`。
 
-## 注册并登录 {#_2-注册并登录}
+## 飞书登录并加入团队空间 {#_2-注册并登录}
 
-首次访问进入登录页。部署允许公开注册（`self_serve`）时，页面显示注册页签；系统没有默认账号。默认配置下，注册会创建个人工作空间，并将新用户设为该空间的 Owner。
+首次访问进入飞书登录页。完成授权后，新账号只创建用户身份，并自动申请加入知识空间 **10000**，不会创建个人空间。
 
-<Screenshot
-  src="/screenshots/quickstart-register.png"
-  caption="首次访问的注册页面"
-  hint="展示注册表单（用户名 / 邮箱 / 密码）与登录入口即可。" />
+1. 点击「飞书登录」，完成飞书授权。
+2. 在申请页等待空间 Owner 或 Admin 审核；重复登录复用现有申请。
+3. 管理员批准时必须选择角色。只读成员可以查看内容；创建知识库、上传和配置资源需要相应的贡献者、管理员或 Owner 权限。
+4. 获批后页面自动更新登录凭据并进入团队空间；拒绝后可查看意见并手动重新申请。
 
-注册要求与部署差异：
+待审批页支持刷新和退出。空间缺失、停用或服务异常时会显示明确状态，不会自动创建替代空间。密码、公开注册、邀请注册、OIDC 和桌面自动登录入口均已关闭。
 
-- 用户名 2–50 个字符；密码为 8–32 位，至少包含字母和数字。启用复杂密码策略后，还须同时包含大小写字母和特殊字符，界面与 API 使用同一策略；
-- 团队部署可关闭公开注册，之后通过邀请链接添加成员。可设置 `DISABLE_REGISTRATION=true`（启动时把注册模式强制为 `invite_only`），或由系统管理员在「设置 → 系统」将 `auth.registration_mode` 改成 `invite_only`（立即生效，不用重启）；
-- 如果部署把默认空间策略设成了 `tenantless`（`auth.default_tenant_mode`），注册后**不会**自动建空间，而是被引导到 `/onboarding/workspace`，需要先自建或接受邀请加入一个空间才能继续；
-- 桌面应用免注册，启动即自动创建本地账号并登录；Lite 单二进制在浏览器中访问时仍需注册和登录。
+初始 Owner 仅通过飞书服务端资料中的邮箱 `jordyn.ji@idreamsky.com` 初始化一次，详细规则见[团队空间与飞书认证](../03-features/01-tenant-auth.md)。
 
 ::: tip 空间与平台权限
 空间 Owner 管理所在空间的成员、模型和知识库。全局系统设置、平台任务队列及跨空间审计需要系统管理员身份，两类权限独立授予。
 
-首次设置系统管理员时，先注册账号，再为 app 服务配置 `WEKNORA_BOOTSTRAP_SYSTEM_ADMIN_EMAIL=<该账号邮箱>` 并重启。该流程仅在部署尚无系统管理员时生效。完整步骤与限制见[平台管理与系统管理员](../03-features/20-platform-admin.md)。
+首次设置系统管理员时，先通过飞书认证创建账号，再为 app 服务配置 `WEKNORA_BOOTSTRAP_SYSTEM_ADMIN_EMAIL=<该账号邮箱>` 并重启。该流程仅在部署尚无系统管理员时生效。完整步骤与限制见[平台管理与系统管理员](../03-features/20-platform-admin.md)。
 :::
 
 ## 创建知识库并配置模型 {#_3-创建知识库并配置模型}
@@ -90,20 +87,15 @@
 
 ## 通过 API 完成首次问答 {#_7-用-api-走通同样的链路}
 
-以下示例按注册、登录、建库、模型初始化、上传和问答顺序调用 API。路径统一使用 `/api/v1` 前缀，需要 Bash、curl 和 jq。登录账号须已加入工作空间；若登录响应没有 `active_tenant`，请先创建或加入空间，再重新登录。
+以下示例使用已通过飞书登录、获批加入 10000 且具备相应写权限的用户凭据，依次调用建库、模型初始化、上传和问答接口。路径统一使用 `/api/v1` 前缀，需要 Bash、curl 和 jq。将飞书会话签发的 access token 放入本机环境变量 `WEKNORA_ACCESS_TOKEN`，不要把凭据写入仓库。
 
 ```bash
 BASE=http://localhost:8080/api/v1
 
-# 1) 注册（首次部署时；用户名 2–50 字符；密码 8–32 位且含字母和数字，复杂策略另有要求）
-curl -s -X POST $BASE/auth/register -H "Content-Type: application/json" \
-  -d '{"username":"admin","email":"admin@example.com","password":"pass123456"}'
-
-# 2) 登录，保存 JWT 与当前工作空间 ID（后续创建 API Key 时使用）
-LOGIN_RESPONSE=$(curl -s -X POST $BASE/auth/login -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"pass123456"}')
-TOKEN=$(printf '%s\n' "$LOGIN_RESPONSE" | jq -r '.token')
-TENANT_ID=$(printf '%s\n' "$LOGIN_RESPONSE" | jq -r '.active_tenant.id')
+# 1) 使用飞书认证完成后签发的 access token
+: "${WEKNORA_ACCESS_TOKEN:?请先设置已获批用户的 access token}"
+TOKEN="$WEKNORA_ACCESS_TOKEN"
+TENANT_ID=10000
 AUTH="Authorization: Bearer $TOKEN"
 
 # 3) 创建知识库
@@ -150,12 +142,12 @@ curl -s -X POST $BASE/knowledge-search -H "$AUTH" -H "Content-Type: application/
 | --- | --- | --- |
 | JWT | `Authorization: Bearer <token>` | 浏览器 / 交互式调用，登录接口签发 |
 | API Key | `X-API-Key: <key>` | 服务端集成；在「空间设置」或 `POST /api/v1/tenants/:id/api-keys` 创建，支持细粒度能力（`retrieve`/`chat`/`ingest`/`manage_kbs` 等） |
-| 指定空间 | `X-Tenant-ID: <id>` | 多空间用户切换当前工作空间 |
+| 指定空间 | `X-Tenant-ID: <id>` | 指定已有权限的空间；普通用户不能借此进入未获批空间 |
 
 服务端集成建议用 API Key 而不是 JWT：
 
 ```bash
-# 以当前工作空间 Owner 身份创建 API Key（TENANT_ID 已在登录步骤提取）
+# 以当前工作空间 Owner 身份创建 API Key（TENANT_ID 为已获批空间 10000）
 curl -s -X POST $BASE/tenants/$TENANT_ID/api-keys -H "$AUTH" -H "Content-Type: application/json" \
   -d '{"name":"ci-bot","full_access":true}'
 # 之后所有请求改用：
@@ -188,9 +180,10 @@ sequenceDiagram
     participant DR as "docreader (gRPC)"
     participant DB as "ParadeDB / 向量索引"
     participant LLM as "LLM (Ollama / 远程 API)"
-    U->>FE: 注册 / 登录
-    FE->>APP: POST /api/v1/auth/register → login
-    APP-->>FE: JWT + 自动创建的租户
+    U->>FE: 飞书登录
+    FE->>APP: 飞书授权回调
+    APP-->>FE: JWT + 加入 10000 的申请状态
+    U->>APP: 获批后切换空间并刷新凭据
     U->>APP: POST /api/v1/knowledge-bases (创建知识库)
     U->>APP: POST /api/v1/initialization/initialize/:kbId (配置模型)
     APP->>LLM: 连通性测试 (remote/check, embedding/test)
@@ -212,7 +205,7 @@ sequenceDiagram
 | 上传后一直 `processing` | `docker logs Gamelib-docreader`；大文件受 `MAX_FILE_SIZE_MB`（默认 50）与 `WEKNORA_DOCUMENT_PROCESS_TIMEOUT`（默认 2h）约束 |
 | 初始化时 Ollama 检测失败 | 容器内默认地址 `http://host.docker.internal:11434`（`OLLAMA_BASE_URL`）；Linux 需确认 `extra_hosts: host.docker.internal:host-gateway` 生效 |
 | 问答无引用 / 召回为空 | 确认知识解析 `completed`；调低 `vector_threshold`；检查 embedding 模型与建库时一致 |
-| 注册页签消失 | 查 `GET /auth/config` 的 `registration_mode`。值可能来自「设置 → 系统」里的数据库设置，不只是 `DISABLE_REGISTRATION`；邀请链接与 OIDC 首次登录是另外两条通路，不受它影响 |
+| 登录后停留在申请页 | 查看加入 10000 的申请状态；等待 Owner/Admin 审核。拒绝后需手动重申，目标空间异常时联系管理员 |
 | API Key 请求 403 | Key 的 capabilities 不含所需能力，或 `knowledge_base_ids` 白名单未包含目标库 |
 
 下一步：想调细节看[配置详解](./04-configuration.md)，想了解系统怎么运转看[总体架构](../02-architecture/01-overview.md)。

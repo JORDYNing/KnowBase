@@ -261,12 +261,6 @@ func (p *PluginMerge) resolveParentChunks(
 		return results
 	}
 
-	// Batch fetch parent chunks. The lookup is intentionally not tenant
-	// scoped: retrieval results can come from an org-shared KB whose chunks
-	// belong to the sharing workspace, and a caller-tenant filter made every
-	// parent (and the image_info enrichment that hangs off it) invisible for
-	// shared hits (#3342). The IDs come from retrieval results, not client
-	// input, matching ListChunksByIDOnly's existing shared-KB usage.
 	ids := make([]string, 0, len(parentIDs))
 	for id := range parentIDs {
 		ids = append(ids, id)
@@ -326,8 +320,6 @@ func (p *PluginMerge) resolveParentChunks(
 		}
 	}
 
-	// Batch-fetch image_info scoped to matched text children only. Not
-	// tenant scoped, for the same shared-KB reason as the parent fetch above.
 	textChildIDs := collectScopedTextChildIDs(results, parentMap)
 	var scopedImageInfo map[string]string
 	if len(textChildIDs) > 0 {

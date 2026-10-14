@@ -2,7 +2,7 @@
 
 管理知识库中的 FAQ 条目与 Wiki 页面，支持导入、检索、编辑和版本恢复。
 
-两组均为 KB 内容子资源：读为 Viewer+ 且 KB read（API key `retrieve`/full）；写为“KB 创建者 OR Admin+”且 KB write（API key `ingest`/full），并受 KB 白名单约束。跨库 Wiki 搜索 `POST /wiki-search` 无路径 KB，Viewer+ 且 API key `retrieve`/full，handler 内校验每个目标库的 allow-list 与共享库 Viewer 权限。
+两组均为 KB 内容子资源：读为 Viewer+ 且 KB read（API key `retrieve`/full）；写为“KB 创建者 OR Admin+”且 KB write（API key `ingest`/full），并受 KB 白名单约束。跨库 Wiki 搜索 `POST /wiki-search` 无路径 KB，Viewer+ 且 API key `retrieve`/full，handler 内校验每个目标库的当前空间归属、allow-list 与读权限。
 
 ## FAQ（/api/v1/knowledge-bases/:id/faq）
 

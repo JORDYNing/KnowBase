@@ -64,29 +64,25 @@ import { computed } from 'vue'
 import { useApiBaseUrlDisplay } from '@/composables/useApiBaseUrlDisplay'
 import { copyWithToast } from '@/utils/clipboard'
 import IntegrationLandingLayout from './IntegrationLandingLayout.vue'
-import { buildCLIConnectCommand } from './cliIntegration'
+import { buildCLIConnectCommand, CLI_MCP_CONFIG } from './cliIntegration'
 
 const { apiBaseUrlDisplay } = useApiBaseUrlDisplay()
 const steps = computed(() => [
   {
     key: 'install',
-    command: 'cd cli\ngo build -o weknora .\nexport PATH="$PWD:$PATH"',
+    command: 'cd cli\ngo build -o gamelib .\nexport PATH="$PWD:$PATH"',
   },
   { key: 'connect', command: buildCLIConnectCommand(apiBaseUrlDisplay.value, window.location.origin) },
-  { key: 'verify', command: 'weknora doctor\nweknora kb list' },
+  { key: 'verify', command: 'gamelib doctor\ngamelib kb list' },
 ])
 const examples = [
   {
     key: 'commands',
-    command: 'weknora doc upload ./document.pdf --kb "KB_ID"\nweknora search chunks "query" --kb "KB_ID"\nweknora chat "question" --kb "KB_ID" --format text\nweknora agent list',
+    command: 'gamelib doc upload ./document.pdf --kb "KB_ID"\ngamelib search chunks "query" --kb "KB_ID"\ngamelib chat "question" --kb "KB_ID" --format text\ngamelib agent list',
   },
   {
     key: 'mcp',
-    command: JSON.stringify({
-      mcpServers: {
-        weknora: { command: 'weknora', args: ['--profile', 'weknora', 'mcp', 'serve'] },
-      },
-    }, null, 2),
+    command: JSON.stringify(CLI_MCP_CONFIG, null, 2),
   },
 ]
 

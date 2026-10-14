@@ -1,4 +1,4 @@
-// Package skillscmd holds the `weknora skills` command tree: list the bundled
+// Package skillscmd holds the `gamelib skills` command tree: list the bundled
 // Agent Skills and install (write) them to an agent's skills directory. The
 // skill markdown is embedded in the binary (see cli/skills), so install works
 // without a source checkout — replacing the manual symlink-from-checkout MVP.
@@ -21,7 +21,7 @@ import (
 	skillsfs "github.com/Tencent/WeKnora/cli/skills"
 )
 
-// NewCmd builds the `weknora skills` parent command.
+// NewCmd builds the `gamelib skills` parent command.
 func NewCmd(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "skills",
@@ -62,8 +62,8 @@ func newCmdList() *cobra.Command {
 	}
 	cmdutil.AddFormatFlag(cmd, skillsListFields...)
 	cmdutil.SetAgentHelp(cmd, cmdutil.AgentHelp{
-		UsedFor:  "list the Agent Skills bundled in this CLI binary (name, description, file count) — discover what `weknora skills install` would write",
-		Examples: []string{"weknora skills list --format json"},
+		UsedFor:  "list the Agent Skills bundled in this CLI binary (name, description, file count) — discover what `gamelib skills install` would write",
+		Examples: []string{"gamelib skills list --format json"},
 		Output:   "envelope.data is an array of {name, description, files[]}",
 	})
 	return cmd
@@ -143,7 +143,7 @@ Existing files are left untouched unless --force is passed.`,
 	cmdutil.AddDryRunFlag(cmd, &dryRun)
 	cmdutil.SetAgentHelp(cmd, cmdutil.AgentHelp{
 		UsedFor:  "write the bundled Agent Skills to an agent's skills directory (default ~/.claude/skills) so the agent can load them; --dry-run previews the file list",
-		Examples: []string{"weknora skills install --dry-run --format json", "weknora skills install --dir ~/.claude/skills --force"},
+		Examples: []string{"gamelib skills install --dry-run --format json", "gamelib skills install --dir ~/.claude/skills --force"},
 		Output:   "envelope.data is {dir, installed:[paths], skills:[names]}",
 	})
 	return cmd

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin, NotifyPlugin } from 'tdesign-vue-next'
@@ -8,7 +8,6 @@ import ManualKnowledgeEditor from '@/components/manual-knowledge-editor.vue'
 import UploadConfirmHost from '@/components/UploadConfirmHost.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
-import { getCurrentUser, userInfoFromApi } from '@/api/auth'
 import { consumePendingTenantSwitchToast } from '@/utils/tenantSwitch'
 import { useRoleLabel } from '@/composables/useRoleLabel'
 import { notifyLoginSuccess } from '@/utils/loginNotify'
@@ -39,7 +38,7 @@ const tdLocaleMap: Record<string, object> = {
 
 const tdGlobalConfig = computed(() => tdLocaleMap[locale.value] || enUSConfig)
 
-const decodeOIDCResult = (encoded: string) => {
+const decodeFeishuResult = (encoded: string) => {
   const normalized = encoded.replace(/-/g, '+').replace(/_/g, '/')
   const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4)
   const binary = window.atob(padded)
@@ -47,87 +46,19 @@ const decodeOIDCResult = (encoded: string) => {
   return JSON.parse(new TextDecoder().decode(bytes))
 }
 
-const clearOIDCCallbackState = (path = '/') => {
+const clearFeishuCallbackState = (path = '/') => {
   window.history.replaceState({}, document.title, path)
 }
 
-const syncOIDCUserContext = async () => {
-  const currentUserResponse = await getCurrentUser()
-  if (!currentUserResponse.success || !currentUserResponse.data?.user) {
-    throw new Error(currentUserResponse.message || 'Failed to get user information')
-  }
-
-  const { user, tenant, memberships, capabilities } = currentUserResponse.data
-  authStore.setUser(userInfoFromApi(user, tenant?.id))
-  if (tenant) {
-    authStore.setTenant({
-      id: String(tenant.id) || '',
-      name: tenant.name || '',
-      owner_id: tenant.owner_id || user.id || '',
-      description: tenant.description,
-      status: tenant.status,
-      business: tenant.business,
-      storage_quota: tenant.storage_quota,
-      storage_used: tenant.storage_used,
-      created_at: tenant.created_at || new Date().toISOString(),
-      updated_at: tenant.updated_at || new Date().toISOString()
-    })
-  } else {
-    authStore.setTenant(null)
-  }
-  // Refresh memberships so currentTenantRole reflects any role change
-  // since the last login (e.g. an Owner demoted us to Viewer in a
-  // peer tenant). Without this, memberships stay frozen at the
-  // login-time snapshot and the UI silently lies about our authority.
-  if (Array.isArray(memberships)) {
-    authStore.setMemberships(memberships)
-  }
-  if (typeof capabilities?.can_create_tenant === 'boolean') {
-    authStore.setCanCreateTenant(capabilities.can_create_tenant)
-  }
-  // Same active-vs-home reconciliation as Login.vue: if the OIDC login
-  // landed us in a non-home tenant (because the backend honoured a
-  // remembered last-active-tenant preference) make sure X-Tenant-ID
-  // override is set; otherwise drop any stale override.
-  const activeIdNum = tenant?.id != null ? Number(tenant.id) : NaN
-  const homeIdNum = user.tenant_id != null ? Number(user.tenant_id) : NaN
-  if (Number.isFinite(activeIdNum) && Number.isFinite(homeIdNum) && activeIdNum !== homeIdNum) {
-    authStore.setSelectedTenant(activeIdNum, tenant?.name || null)
-  } else {
-    authStore.setSelectedTenant(null, null)
-  }
-}
-
-const persistOIDCLoginResponse = async (response: any) => {
-  if (!response.token) {
-    throw new Error(response.message || 'OIDC login failed')
-  }
-
-  authStore.setToken(response.token)
-  if (response.refresh_token) {
-    authStore.setRefreshToken(response.refresh_token)
-  }
-
-  await syncOIDCUserContext()
-
-  // OIDC 跳转前暂存的邀请 token：拿到会话后兑换并进入对应空间。
-  const pendingInviteToken = sessionStorage.getItem('weknora_pending_invite_token')
-  if (pendingInviteToken) {
-    sessionStorage.removeItem('weknora_pending_invite_token')
-    const result = await authStore.acceptInvitationByTokenAndRefresh(pendingInviteToken)
-    await nextTick()
-    if (result.ok) MessagePlugin.success(t('inviteRegister.joined'))
-    else MessagePlugin.warning(t('inviteRegister.invalidBody'))
-    // 会话已有效，无论 token 是否兑换成功都进入应用。
-    router.replace('/platform/knowledge-bases')
-    return
-  }
-
+// Feishu uses the existing signed callback envelope; all session hydration
+// stays in the auth store so pending users never mount tenant resources.
+const persistFeishuLoginResponse = async (response: any) => {
+  if (!await authStore.applyLoginResponse(response)) throw new Error(t('auth.feishuLoginFailed'))
   await nextTick()
-  router.replace(authStore.hasValidTenant ? '/platform/knowledge-bases' : '/onboarding/workspace')
+  await router.replace(authStore.hasValidTenant ? '/platform/knowledge-bases' : '/onboarding/workspace')
 }
 
-const handleGlobalOIDCCallback = async () => {
+const handleGlobalFeishuCallback = async () => {
   const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : ''
   if (!hash) return
 
@@ -139,78 +70,41 @@ const handleGlobalOIDCCallback = async () => {
   if (!oidcError && !oidcResult) return
 
   if (oidcError) {
-    clearOIDCCallbackState('/login')
+    clearFeishuCallbackState('/login')
     await router.replace('/login')
-    MessagePlugin.error(oidcErrorDescription || 'OIDC login failed')
+    MessagePlugin.error(oidcErrorDescription || t('auth.feishuLoginFailed'))
     return
   }
 
   try {
     if (!oidcResult) {
-      clearOIDCCallbackState('/login')
+      clearFeishuCallbackState('/login')
       await router.replace('/login')
-      MessagePlugin.error('OIDC login failed')
+      MessagePlugin.error(t('auth.feishuLoginFailed'))
       return
     }
 
-    const response = decodeOIDCResult(oidcResult)
+    const response = decodeFeishuResult(oidcResult)
     if (response.success) {
-      clearOIDCCallbackState('/')
-      await persistOIDCLoginResponse(response)
+      clearFeishuCallbackState('/')
+      await persistFeishuLoginResponse(response)
       notifyLoginSuccess(response, t, tm, formatRole, roleIcon)
       return
     }
 
-    clearOIDCCallbackState('/login')
+    clearFeishuCallbackState('/login')
     await router.replace('/login')
-    MessagePlugin.error(response.message || 'OIDC login failed')
+    MessagePlugin.error(response.message || t('auth.feishuLoginFailed'))
   } catch (error: any) {
-    console.error('Global OIDC callback handling failed:', error)
+    console.error('Feishu callback handling failed:', error)
     authStore.logout()
-    clearOIDCCallbackState('/login')
+    clearFeishuCallbackState('/login')
     await router.replace('/login')
-    MessagePlugin.error(error.message || 'OIDC login failed')
+    MessagePlugin.error(error.message || t('auth.feishuLoginFailed'))
   }
 }
 
 let updateCheckTimer: ReturnType<typeof setInterval> | null = null
-
-// Pending invitations poll: fires once on mount (logged-in case) and
-// then every 2 minutes. Light enough to keep the avatar-row badge
-// near-live without slamming the API, and avoids the cost of a
-// dedicated SSE/WebSocket connection. Stopped on logout via the
-// computed below.
-let invitationPollTimer: ReturnType<typeof setInterval> | null = null
-const INVITATION_POLL_INTERVAL_MS = 2 * 60 * 1000
-
-const startInvitationPolling = () => {
-  if (invitationPollTimer || !authStore.isLoggedIn) return
-  // Immediate fetch so the badge is correct before the first tick.
-  authStore.fetchPendingInvitationCount()
-  invitationPollTimer = setInterval(() => {
-    if (!authStore.isLoggedIn) return
-    authStore.fetchPendingInvitationCount()
-  }, INVITATION_POLL_INTERVAL_MS)
-}
-
-const stopInvitationPolling = () => {
-  if (invitationPollTimer) {
-    clearInterval(invitationPollTimer)
-    invitationPollTimer = null
-  }
-}
-
-// React to login/logout via the store's isLoggedIn computed. Watching
-// here (rather than only on first mount) handles the OIDC callback
-// flow where the user logs in well after App.vue has already mounted.
-watch(
-  () => authStore.isLoggedIn,
-  (logged) => {
-    if (logged) startInvitationPolling()
-    else stopInvitationPolling()
-  },
-  { immediate: true },
-)
 
 // 切换空间后会 hard reload；切换前 stash 的 toast 这里 consume 并弹出，
 // 这样 toast 显示在新页面上，duration 才真正生效。
@@ -241,7 +135,7 @@ const showPendingTenantSwitchToast = () => {
 }
 
 onMounted(() => {
-  handleGlobalOIDCCallback()
+  handleGlobalFeishuCallback()
   showPendingTenantSwitchToast()
 
   // Auto check for updates on startup
@@ -271,7 +165,6 @@ onUnmounted(() => {
   if (updateCheckTimer) {
     clearInterval(updateCheckTimer)
   }
-  stopInvitationPolling()
 })
 
 </script>
@@ -279,9 +172,11 @@ onUnmounted(() => {
   <t-config-provider :globalConfig="tdGlobalConfig">
     <div id="app">
       <RouterView />
-      <ManualKnowledgeEditor />
-      <ProtectedResourcePreview />
-      <UploadConfirmHost />
+      <template v-if="authStore.hasValidTenant">
+        <ManualKnowledgeEditor />
+        <ProtectedResourcePreview />
+        <UploadConfirmHost />
+      </template>
     </div>
   </t-config-provider>
 </template>

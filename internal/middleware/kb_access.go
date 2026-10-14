@@ -10,7 +10,6 @@ import (
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
-	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
 )
 
@@ -155,38 +154,13 @@ func isResourceNotFound(err error) bool {
 		stderrors.Is(err, ErrResourceNotFound)
 }
 
-// RequireKBAccess returns a gin.HandlerFunc that resolves KB access
-// (own / org-shared / via shared agent), enforces the minimum required
-// org-level permission, and on success stores the result under
-// KBAccessContextKey AND rewrites c.Request.Context() to carry the
-// effective tenant ID. Handlers downstream just read tenant from
-// context as before.
-//
-// On failure the guard aborts with the appropriate HTTP status (400 /
-// 401 / 404 / 403 / 503). Behaviour matches what each handler's
-// effectiveCtxForKB helper used to do; the guard is what consolidates
-// the repetition so a fix in the resolution order propagates to every
-// gated route at once.
-//
-// Required permission semantics:
-//   - OrgRoleViewer -> read-only routes (the agent-share fallback path
-//     activates only at this level)
-//   - OrgRoleEditor -> mutating routes (org-shared editor or own KB)
-//   - OrgRoleAdmin  -> share-management routes (only the original
-//     sharer / KB owner / Org admin should pass)
-//
-// The EnableRBAC rollout switch does not apply here. It relaxes the role
-// checks inside a workspace, while ResolveKB always grants a KB's own
-// workspace, so a denial from it means another workspace's KB without a
-// share. Handlers behind this guard load KBs, chunks and wiki pages by ID
-// without a tenant filter, so letting a denial through would lift
-// workspace isolation for the whole rollout window.
+// RequireKBAccess resolves a KB within the authenticated caller's workspace,
+// applies the API-key resource scope, and attaches an exact operation grant.
+// Tenant role and creator checks remain separate admission guards.
 func RequireKBAccess(
 	resolveKBID KBIDResolver,
-	requiredPermission types.OrgMemberRole,
+	requiredPermission types.KBPermission,
 	kbService KBLookup,
-	kbShareService interfaces.KBShareService,
-	agentShareService interfaces.AgentShareService,
 	cfg *config.Config,
 ) gin.HandlerFunc {
 	warnOnNilConfig(cfg)
@@ -205,7 +179,7 @@ func RequireKBAccess(
 			return
 		}
 
-		grant, err := resolveKBAccess(ctx, c, kbID, requiredPermission, kbService, kbShareService, agentShareService)
+		grant, err := resolveKBAccess(ctx, c, kbID, requiredPermission, kbService)
 		switch {
 		case stderrors.Is(err, access.ErrUnauthorized):
 			_ = c.Error(apperrors.NewUnauthorizedError("Unauthorized"))
@@ -232,10 +206,8 @@ func RequireKBAccess(
 			return
 		}
 
-		// Stash the resolution and rewrite the request to carry the
-		// effective tenant id. Handlers reading tenant from context now
-		// see the source-tenant for shared KBs (so retrieval queries
-		// hit the right embedding store) without having to know.
+		// Carry the current-tenant KB and its exact operation grant into
+		// downstream handlers without changing the authenticated caller.
 		c.Set(KBAccessContextKey, grant)
 		newCtx := grant.Context(ctx)
 		c.Request = c.Request.WithContext(newCtx)
@@ -243,8 +215,8 @@ func RequireKBAccess(
 	}
 }
 
-// KBAccessRequest captures caller identity before a guard scopes the request
-// context to a shared resource. The stored grant also supports nested guards.
+// KBAccessRequest captures caller identity before a guard attaches the exact
+// resource grant. Legacy selectors never expand access beyond this tenant.
 func KBAccessRequest(c *gin.Context) access.KBRequest {
 	ctx := c.Request.Context()
 	caller := types.CallerFromContext(ctx)
@@ -270,10 +242,8 @@ func resolveKBAccess(
 	ctx context.Context,
 	c *gin.Context,
 	kbID string,
-	requiredPermission types.OrgMemberRole,
+	requiredPermission types.KBPermission,
 	kbService KBLookup,
-	kbShareService interfaces.KBShareService,
-	agentShareService interfaces.AgentShareService,
 ) (*KBAccess, error) {
 	request := KBAccessRequest(c)
 	if request.Caller.TenantID == 0 {
@@ -286,5 +256,5 @@ func resolveKBAccess(
 		}
 		return nil, err
 	}
-	return access.ResolveKB(ctx, request, kb, requiredPermission, kbShareService, agentShareService)
+	return access.ResolveKB(ctx, request, kb, requiredPermission)
 }

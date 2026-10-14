@@ -1,0 +1,68 @@
+# Use with: docker compose -p knowbase -f docker-compose.yml -f deploy/docker-compose.server.yml
+# Images are built from the deployed source snapshot for Linux amd64.
+services:
+  frontend:
+    image: knowbase/frontend:e9ed1671-20261014
+    pull_policy: never
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  app:
+    image: knowbase/app:e9ed1671-20261014
+    pull_policy: never
+    ports: !override
+      - "127.0.0.1:${APP_PORT:-18080}:8080"
+    stop_grace_period: 1m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  docreader:
+    image: knowbase/docreader:amd64-20261014
+    pull_policy: never
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postgres:
+    image: knowbase/postgres:amd64-20261014
+    pull_policy: never
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: knowbase/redis:amd64-20261014
+    pull_policy: never
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  redis-data:

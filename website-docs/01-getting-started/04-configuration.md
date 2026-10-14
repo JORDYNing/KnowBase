@@ -9,7 +9,7 @@ Gamelib 的配置由四层组成，**优先级从低到高**：
 | 环境变量 | `.env` / 容器 environment | 部署级覆盖，改完需重启 |
 | 运行时系统设置 | 数据库 `system_settings` 表，界面在「设置 → 系统」 | 支持的设置可在线修改，优先于环境变量，多数立即生效 |
 
-注册模式、空间策略与配额、SSRF 白名单、任务并发及模型并发上限支持运行时配置。在控制台修改后，数据库中的值优先于环境变量；重置设置项（`DELETE /api/v1/system/admin/settings/:key`）才会恢复使用环境变量或内置默认值。排查环境变量未生效时，应先检查该项是否已有运行时配置。完整设置见[平台管理与系统管理员](../03-features/20-platform-admin.md)。
+存储配额、SSRF 白名单、任务并发及模型并发上限支持运行时配置。认证策略固定为仅飞书登录、新账号无空间和禁止普通用户自建空间；旧数据库设置或环境变量不能覆盖这些规则。在控制台修改后，数据库中的值优先于环境变量；重置设置项（`DELETE /api/v1/system/admin/settings/:key`）才会恢复使用环境变量或内置默认值。排查环境变量未生效时，应先检查该项是否已有运行时配置。完整设置见[平台管理与系统管理员](../03-features/20-platform-admin.md)。
 
 主配置结构定义在 `internal/config/config.go`。各项配置与环境变量的含义、默认值及生效条件如下。
 
@@ -22,7 +22,7 @@ Gamelib 的配置由四层组成，**优先级从低到高**：
 3. viper 开启 `AutomaticEnv()` 且 key 分隔符 `.` 映射为 `_`（即 `server.port` 可被环境变量 `SERVER_PORT` 覆盖）；
 4. 从 `config/prompt_templates/*.yaml` 加载提示词模板，并按 `xxx_prompt_id` 字段**回填**到 conversation 配置（`backfillConversationDefaults`）；
 5. 加载 `builtin_agents.yaml`（内置 Agent）与 `agent_type_presets.yaml`（Agent 类型预设），并解析其中的 `system_prompt_id` 引用；
-6. 应用环境变量覆盖（OIDC、Agent、KnowledgeBase、Auth/Tenant、Audit 各组）并执行 `ValidateConfig` 校验。
+6. 应用环境变量覆盖（飞书登录、Agent、KnowledgeBase、Auth/Tenant、Audit 各组）并固定团队认证策略并执行 `ValidateConfig` 校验。
 
 ```mermaid
 flowchart LR
@@ -32,7 +32,7 @@ flowchart LR
     V --> BF
     BA["config/builtin_agents.yaml"] --> LD["LoadBuiltinAgentsConfig"]
     AP["config/agent_type_presets.yaml"] --> LD2["LoadAgentTypePresetsConfig"]
-    BF --> OV["applyOIDCEnvOverrides / applyAgentEnvOverrides / applyKnowledgeBaseEnvOverrides / applyAuthAndTenantDefaults / applyAuditDefaults"]
+    BF --> OV["applyFeishuLoginEnvOverrides / applyAgentEnvOverrides / applyKnowledgeBaseEnvOverrides / applyAuthAndTenantDefaults / applyAuditDefaults"]
     LD --> OV
     LD2 --> OV
     OV --> VC["ValidateConfig"] --> CFG["最终 *config.Config"]
@@ -108,9 +108,9 @@ flowchart LR
 | 名称 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `enable_cross_tenant_access` | bool | false | 允许具备 `CanAccessAllTenants` 的用户跨空间访问（内网可开） |
-| `enable_rbac` | *bool | true | 空间角色强制鉴权；显式 `false` 进入灰度模式，空间内的角色检查仅记录不拦截，跨空间访问仍然拦截（env `WEKNORA_TENANT_ENABLE_RBAC`） |
-| `max_owned_per_user` | int | 0（走 handler 默认） | 单个非超管可自建空间数上限；<0 关闭限制（env `WEKNORA_TENANT_MAX_OWNED_PER_USER`） |
-| `self_service_creation_enabled` | *bool | true | 普通用户能否自建空间（env `WEKNORA_TENANT_SELF_SERVICE_CREATION_ENABLED`） |
+| `enable_rbac` | *bool | 固定 true | 空间角色强制鉴权；旧配置不能关闭 |
+| `max_owned_per_user` | int | 历史兼容字段 | 普通用户自建空间已禁用，此字段不能重新授予创建权限 |
+| `self_service_creation_enabled` | *bool | 固定 false | 普通用户不能自建空间；既有平台超管与平台 API Key 的管理能力独立保留 |
 | `default_session_name` / `default_session_title` / `default_session_description` | string | 空 | 新会话默认文案 |
 
 ### 结构体支持但默认文件未写出的段
@@ -119,9 +119,9 @@ flowchart LR
 
 | 段 | 结构体 | 关键字段与默认值 |
 | --- | --- | --- |
-| `auth` | `AuthConfig` | `registration_mode`：`self_serve`（默认）/ `invite_only`（`DISABLE_REGISTRATION=true` 时强制）；`default_tenant_mode`：`create_personal`（默认）/ `tenantless` |
+| `auth` | `AuthConfig` | 固定 `registration_mode: invite_only`、`default_tenant_mode: tenantless`；账号只能经飞书认证创建，公开与邀请注册均不可用 |
 | `audit` | `AuditConfig` | `retention_days`：审计日志保留天数，段落省略时默认 90；0 禁用清理；<0 校验报错（env `WEKNORA_AUDIT_RETENTION_DAYS`） |
-| `oidc_auth` | `OIDCAuthConfig` | `enable`、`issuer_url`、`jwks_uri`、`discovery_url`（缺省由 issuer 拼 `/.well-known/openid-configuration`）、`client_id`、`client_secret`、`authorization_endpoint`、`token_endpoint`、`user_info_endpoint`、`scopes`（默认 `openid profile email`）、`user_info_mapping.username`（默认 `name`）/`email`（默认 `email`）；全部可用 `OIDC_AUTH_*` 环境变量覆盖 |
+| `feishu_login` | `FeishuLoginConfig` | `enable`、`app_id`、`app_secret`、`scopes`，可通过 `FEISHU_LOGIN_*` 覆盖；必须配置回调并允许服务端读取用户邮箱，见[飞书认证](../03-features/01-tenant-auth.md) |
 | `agent` | `AgentConfig` | `llm_call_timeout`：单次 LLM 调用超时秒数（默认 120，env `WEKNORA_AGENT_LLM_TIMEOUT`）；`tool_approval_timeout_seconds`：MCP 工具人工审批等待（默认 600，env `WEKNORA_AGENT_TOOL_APPROVAL_TIMEOUT`） |
 | `im` | `IMConfig` | IM 渠道 QA 并发：`workers`（5）、`global_max_workers`（0=不限，需 Redis）、`max_queue_size`（50）、`max_per_user`（3）、`rate_limit_window`（60s）、`rate_limit_max`（10） |
 | `docreader` | `DocReaderConfig` | `addr`（gRPC 地址如 `docreader:50051` 或 HTTP base URL）、`transport`：`grpc`（默认）/ `http`；通常用 env `DOCREADER_ADDR` / `DOCREADER_TRANSPORT` |
@@ -225,21 +225,17 @@ AWS S3 的 `S3_ACCESS_KEY` / `S3_SECRET_KEY` 可以**同时留空**，此时走 
 | `JWT_SECRET` | 空 | JWT 签名密钥（必填，可用 `openssl rand -hex 32` 生成）。留空或使用示例值时每次启动随机生成，重启后已登录用户需重新登录；多副本必须配置相同的值 |
 | `SYSTEM_AES_KEY` | 空 | 敏感字段落盘加密的 AES-256 主密钥，**必须 32 字节**（可用 `openssl rand -hex 16` 生成）；丢失则已加密数据（租户 API Key、模型 key、向量库凭证等）不可恢复，升级时沿用原值。v0.4.0 起取代 `TENANT_AES_KEY`/`CRYPTO_MASTER_KEY`/`CRYPTO_SALT` |
 | `SYSTEM_SIGNING_KEY` | 空（回退到 `SYSTEM_AES_KEY`） | 嵌入会话与预签名文件链接的签名密钥（可用 `openssl rand -hex 32` 生成）。未设置时使用 `SYSTEM_AES_KEY`；两者都缺失、长度不足 16 或为示例值时无法签发签名链接与嵌入会话。更换后已签发的链接失效；多副本须使用同一个值 |
-| `DISABLE_REGISTRATION` | false | true 时强制 `registration_mode=invite_only` |
-| `WEKNORA_AUTH_DEFAULT_TENANT_MODE` | create_personal | 注册后建空间策略（`create_personal` / `tenantless`） |
-| `WEKNORA_TENANT_ENABLE_RBAC` | （默认 true） | 空间角色强制鉴权开关 |
+| `FEISHU_LOGIN_ENABLE` | false | 部署时设为 true；飞书未配置就绪时不开放其他登录方式 |
+| `FEISHU_LOGIN_APP_ID` / `FEISHU_LOGIN_APP_SECRET` | 空 | 飞书应用凭据，在服务端使用 |
+| `FEISHU_LOGIN_SCOPES` | 用户基础资料与邮箱权限 | 请求飞书用户资料范围；初始化 Owner 依赖服务端获取的 enterprise_email 或 email |
 | `WEKNORA_TENANT_ENABLE_CROSS_TENANT_ACCESS` | false | 跨空间访问 |
-| `WEKNORA_TENANT_SELF_SERVICE_CREATION_ENABLED` | true | 普通用户自建空间 |
-| `WEKNORA_TENANT_MAX_OWNED_PER_USER` | 空 | 自建空间上限 |
 | `WEKNORA_TENANT_AUTO_CREATE_API_KEY` | false | 建空间时自动下发 full_access API Key（兼容旧行为） |
 | `WEKNORA_TENANT_DEFAULT_STORAGE_QUOTA_GB` | 10 | 新空间默认存储配额 |
 | `WEKNORA_AUTH_COMPLEX_PASSWORD_ENABLED` | false | 复杂密码策略：大小写字母、数字、特殊字符；系统设置 auth.complex_password_enabled 优先 |
 | `WEKNORA_TENANT_AUTO_ACCEPT_INVITATION` | false | 邮箱邀请已有账号直接加入；系统设置 tenant.auto_accept_invitation 优先 |
-| `OIDC_AUTH_JWKS_URI` | 空 | id_token 验签公钥集；可经 discovery 补全，与 issuer/audience/有效期共同校验 |
 | `WEKNORA_INVITATION_TTL` | 168h | 邀请链接有效期 |
 | `WEKNORA_AUDIT_RETENTION_DAYS` | 90 | 审计日志保留天数 |
-| `WEKNORA_BOOTSTRAP_SYSTEM_ADMIN_EMAIL` | 空 | 引导第一个系统管理员。**不会创建用户**：该邮箱需先自行注册，下次启动时若部署内还没有任何系统管理员，才把它提升；已有管理员后本变量不再生效。详见[租户、用户与认证授权](../03-features/01-tenant-auth.md) |
-| `OIDC_AUTH_ENABLE` 及 `OIDC_AUTH_*` / `OIDC_USER_INFO_MAPPING_*` | false / 空 | OIDC 单点登录全套配置 |
+| `WEKNORA_BOOTSTRAP_SYSTEM_ADMIN_EMAIL` | 空 | 引导第一个系统管理员。**不会创建用户**：该邮箱需先通过飞书认证创建账号，下次启动时若部署内还没有任何系统管理员，才把它提升；已有管理员后本变量不再生效。详见[租户、用户与认证授权](../03-features/01-tenant-auth.md) |
 | `SSRF_WHITELIST` / `SSRF_WHITELIST_EXTRA` | 空 / `searxng,qdrant,milvus,weaviate,doris-fe,doris-be,minio`（仅 app） | 出站请求 SSRF 白名单。`SSRF_WHITELIST` 为 app 与 docreader 共用；compose 只给 app 的 `SSRF_WHITELIST_EXTRA` 设了默认值，docreader 的同名变量默认为空 |
 | `SSRF_DNS_WHITELIST_ONLY` | false | 仅允许白名单出站（app 与 docreader 均读取）。开启后，不在白名单的主机在 **DNS 查询前**即被拒绝，URL 校验处不在白名单的 IP 直连也一并拒绝；域名只按名字匹配，写在白名单里的 CIDR 不再对域名生效。取值按布尔解析（`1/t/true` 开、`0/f/false` 关），**非空且无法解析的取值按「开」处理**。开启前的准备见下文 |
 | `IMAGE_HOST_KEEP_URL` | 空 | 保留原始 URL 的图片域名白名单 |
@@ -249,7 +245,7 @@ AWS S3 的 `S3_ACCESS_KEY` / `S3_SECRET_KEY` 可以**同时留空**，此时走 
 开启后白名单就是全部出站策略，需要先把所有出站地址写进 `SSRF_WHITELIST` 或 `SSRF_WHITELIST_EXTRA`。docreader 也要访问 compose 内的主机时，请写进两个服务共用的 `SSRF_WHITELIST`（它的 `SSRF_WHITELIST_EXTRA` 默认为空）。通常还要补上：
 
 - 模型服务地址（chat / embedding / rerank / VLM / ASR，含本机 Ollama 的 `localhost`）
-- OIDC 登录的 `dex`（或你的 IdP 域名）、MCP 服务地址、`docreader`
+- 飞书认证与用户资料服务、MCP 服务地址、`docreader`
 - 对象存储（外部 S3/COS/OSS 等）、外部向量库、Langfuse 地址
 - 沙箱控制面地址：开启后「允许私网端点」不再能绕过白名单
 
@@ -430,4 +426,4 @@ builtin_models:
 
 ## 配置优先级速记
 
-对同一语义的配置，生效优先级为：**数据库 `system_settings`（仅注册在表内的键）> 环境变量 > config.yaml > 代码内置默认值**；租户/知识库级配置（`RetrievalConfig`、`ChunkingConfig` 等，存于数据库）在运行时覆盖全局默认。修改 `.env` 后需重启容器（`docker compose up -d app`）；开发模式 air 热重载不会重读 `.env`，需重启 dev 脚本。
+对同一语义的配置，生效优先级为：**数据库 `system_settings`（支持修改的键）> 环境变量 > config.yaml > 代码内置默认值**。固定的团队认证与空间创建规则始终生效，不受旧配置影响；租户/知识库级配置（`RetrievalConfig`、`ChunkingConfig` 等，存于数据库）在运行时覆盖全局默认。修改 `.env` 后需重启容器（`docker compose up -d app`）；开发模式 air 热重载不会重读 `.env`，需重启 dev 脚本。

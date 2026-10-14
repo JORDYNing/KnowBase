@@ -76,9 +76,6 @@ func agentHasKnowledgeScope(config *types.AgentConfig) bool {
 // metadata, together with the tenant each KB should be queried under.
 //
 // The tenant map always comes from SearchTargets, which buildSearchTargets has
-// already resolved (and authorized) per KB: a directly shared KB carries its
-// source tenant there. KnowledgeBases alone cannot tell own from shared KBs —
-// both KBSelectionMode="all" and an @mention put shared KB IDs into it.
 // KBs missing from the map fall back to the caller's tenant.
 func knowledgeBaseScopesForPrompt(config *types.AgentConfig) ([]string, map[string]uint64) {
 	if config == nil {
@@ -1028,9 +1025,6 @@ func (s *agentService) registerTools(
 		allowedTools = tools.DefaultAllowedTools()
 		logger.Infof(ctx, "Using default allowed tools: %v", allowedTools)
 	}
-	if config.SharedAgentReadOnly {
-		allowedTools = withoutWikiWriteTools(allowedTools)
-	}
 
 	// ---- Capability detection from SearchTargets ----
 	var hasVectorKB bool
@@ -1331,10 +1325,6 @@ func (s *agentService) registerTools(
 	return nil
 }
 
-// withoutWikiWriteTools drops the tools that write Wiki state. They execute
-// inside the agent engine and so bypass the HTTP KB permission middleware; they
-// are removed for shared agents (read-only by contract) and whenever no
-// writable wiki KB is in scope.
 func withoutWikiWriteTools(allowed []string) []string {
 	wikiWrites := map[string]bool{
 		tools.ToolWikiFlagIssue:   true,
@@ -1370,9 +1360,6 @@ func (s *agentService) ValidateConfig(config *types.AgentConfig) error {
 	return nil
 }
 
-// getKnowledgeBaseInfos retrieves detailed information for knowledge bases.
-// kbTenantMap carries the tenant each KB should be queried under (source tenant
-// for directly shared KBs); a missing entry falls back to the request tenant.
 func (s *agentService) getKnowledgeBaseInfos(ctx context.Context, kbIDs []string, kbTenantMap map[string]uint64) ([]*agent.KnowledgeBaseInfo, error) {
 	if len(kbIDs) == 0 {
 		return []*agent.KnowledgeBaseInfo{}, nil
@@ -1402,11 +1389,6 @@ func (s *agentService) getKnowledgeBaseInfos(ctx context.Context, kbIDs []string
 			continue
 		}
 
-		// Document/FAQ listing below is tenant-scoped, so a directly shared KB
-		// must be queried under its source tenant — the request context belongs
-		// to the receiving tenant and would silently yield doc_count=0. The
-		// tenant comes from the SearchTarget that buildSearchTargets already
-		// authorized; this only widens the metadata query, never the KB set.
 		metaCtx := ctx
 		if scopeTenantID := kbTenantMap[kbID]; scopeTenantID != 0 {
 			metaCtx = context.WithValue(ctx, types.TenantIDContextKey, scopeTenantID)
@@ -1575,8 +1557,7 @@ func (s *agentService) getSelectedDocumentInfos(ctx context.Context, knowledgeID
 		tenantID = tid
 	}
 
-	// Fetch knowledge metadata (include docs from shared KBs the user has access to)
-	knowledges, err := s.knowledgeService.GetKnowledgeBatchWithSharedAccess(ctx, tenantID, knowledgeIDs)
+	knowledges, err := s.knowledgeService.GetAuthorizedKnowledgeBatch(ctx, tenantID, knowledgeIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get knowledge batch: %w", err)
 	}

@@ -204,30 +204,6 @@ func TestResolveChatModelIDWikiFixerFallsBackToAvailableModel(t *testing.T) {
 
 // A shared agent executes in its owner's workspace; the override would pick
 // any of the owner's models there, so the configured model is used instead.
-func TestResolveChatModelIDIgnoresOverrideForSharedAgents(t *testing.T) {
-	svc := &sessionService{
-		modelService: &stubModelService{
-			modelsByID: map[string]*types.Model{
-				"agent-chat":        {ID: "agent-chat", Type: types.ModelTypeKnowledgeQA},
-				"owner-other-model": {ID: "owner-other-model", Type: types.ModelTypeKnowledgeQA},
-			},
-		},
-	}
-	req := &types.QARequest{
-		Session: &types.Session{},
-		CustomAgent: &types.CustomAgent{
-			ID:     "agent-1",
-			Config: types.CustomAgentConfig{ModelID: "agent-chat"},
-		},
-		SummaryModelID:      "owner-other-model",
-		SharedAgentReadOnly: true,
-	}
-
-	modelID, err := svc.resolveChatModelID(context.Background(), req, nil, nil)
-
-	require.NoError(t, err)
-	assert.Equal(t, "agent-chat", modelID)
-}
 
 // Quick-answer mode follows the same rule as agent mode: the request switch
 // only opts a turn in and cannot enable search the agent turns off.

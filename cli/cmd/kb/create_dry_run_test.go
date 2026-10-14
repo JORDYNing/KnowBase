@@ -37,7 +37,7 @@ func kbDryRunFactory(t *testing.T) *cmdutil.Factory {
 // cmd/root.go). Required because kb subcommands inherit --yes / --format /
 // --jq from root in production.
 func withRootHarness(sub *cobra.Command, args ...string) *cobra.Command {
-	root := &cobra.Command{Use: "weknora"}
+	root := &cobra.Command{Use: "gamelib"}
 	pf := root.PersistentFlags()
 	pf.BoolP("yes", "y", false, "")
 	pf.String("format", "", "")

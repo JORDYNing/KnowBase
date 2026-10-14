@@ -75,21 +75,6 @@ func NewTenantHandler(
 	}
 }
 
-// createTenantRequest is the JSON body for POST /tenants. Only fields a
-// regular authenticated user is allowed to set are accepted; everything
-// else (api_key, status, storage_quota, retriever_engines, etc.) is
-// generated server-side by TenantService.CreateTenant so a normal user
-// can't bypass quotas or self-suspend a workspace at create time.
-//
-// Cross-tenant superusers historically posted the full Tenant struct to
-// this endpoint. We keep that path working by binding into the same
-// types.Tenant when CanAccessAllTenants is true (see CreateTenant
-// below), but the recommended shape going forward is name+description.
-type createTenantRequest struct {
-	Name        string `json:"name" binding:"required,min=1,max=128"`
-	Description string `json:"description" binding:"max=512"`
-}
-
 // updateTenantRequest is the JSON body for PUT /tenants/:id. Only the
 // fields an Owner is permitted to mutate via the public API are bound;
 // everything else (storage_quota, status, business, api_key, agent /
@@ -183,42 +168,16 @@ const (
 	apiPrincipalSecretRedacted = "***"
 )
 
-// defaultMaxOwnedTenantsPerUser is the cap applied when
-// config.Tenant.MaxOwnedPerUser is left at zero. Picked to comfortably
-// cover legitimate "personal + a couple of side-projects" use while
-// blunting drive-by abuse against POST /tenants (see CreateTenant).
-const defaultMaxOwnedTenantsPerUser = 10
-
-// resolveMaxOwnedTenantsPerUser returns the current cap, walking the
-// 3-tier resolver: system_settings DB row > WEKNORA_TENANT_MAX_OWNED_PER_USER
-// env > config.Tenant.MaxOwnedPerUser (yaml) > defaultMaxOwnedTenantsPerUser.
-// We pre-compute the cfg-derived fallback so the SystemSettingService
-// receives a single int64 default — its 3-tier resolver layers DB and
-// env on top of that.
-func (h *TenantHandler) resolveMaxOwnedTenantsPerUser(ctx context.Context) int {
-	fallback := int64(defaultMaxOwnedTenantsPerUser)
-	if h.config != nil && h.config.Tenant != nil && h.config.Tenant.MaxOwnedPerUser != 0 {
-		fallback = int64(h.config.Tenant.MaxOwnedPerUser)
-	}
-	return int(h.systemSettingSvc.GetInt(
-		ctx,
-		"tenant.max_owned_per_user",
-		"WEKNORA_TENANT_MAX_OWNED_PER_USER",
-		fallback,
-	))
-}
-
 // CreateTenant godoc
 // @Summary      创建空间
-// @Description  创建新的空间。任意已登录用户均可调用以建立自己的新工作区，
-// @Description  调用方会被自动设为该空间的 Owner。跨空间超管仍可像以前一样
-// @Description  通过本接口创建任意空间。
+// @Description  仅平台超管（CanAccessAllTenants）或具备 system_tenants_manage 的平台 API Key 可创建空间。
+// @Description  人员调用方会被设为新空间 Owner；普通空间成员不可创建空间。
 // @Description  当 tenant.auto_create_api_key（或 WEKNORA_TENANT_AUTO_CREATE_API_KEY）
 // @Description  开启时，会自动创建一个 full_access API Key，并在响应体的 data.api_key 字段返回其明文 token。
 // @Tags         空间管理
 // @Accept       json
 // @Produce      json
-// @Param        request  body      handler.createTenantRequest  true  "空间信息"
+// @Param        request  body      types.Tenant  true  "平台管理的空间信息"
 // @Success      201      {object}  map[string]interface{}  "创建的空间（可选含 api_key）"
 // @Failure      400      {object}  errors.AppError         "请求参数错误"
 // @Security     Bearer
@@ -240,88 +199,25 @@ func (h *TenantHandler) CreateTenant(c *gin.Context) {
 	apiKeyScope, hasAPIKeyScope := types.TenantAPIKeyScopeFromContext(ctx)
 	platformCaller := hasAPIKeyScope && apiKeyScope.IsPlatform()
 	catalogManager := caller.CanAccessAllTenants || platformCaller
-
-	// Deployment-level policy: ordinary users may be restricted to joining
-	// existing workspaces by invitation. This check is authoritative; the
-	// frontend capability only improves UX and cannot bypass it. Cross-tenant
-	// superusers retain the catalog-management create path.
-	if !catalogManager &&
-		!resolveTenantSelfServiceCreationEnabled(ctx, h.config, h.systemSettingSvc) {
-		logger.Warnf(ctx, "Self-service tenant creation denied by policy for user %s", caller.ID)
+	// Ordinary accounts collaborate in the existing team workspace. Keep
+	// the explicit platform catalog-management capability for administrators.
+	if !catalogManager {
 		c.Error(errors.NewTenantCreationDisabledError())
 		return
 	}
 
+	// Platform management retains the full payload used by existing tooling.
 	var tenantData types.Tenant
-
-	if catalogManager {
-		// Backward-compatible path for cross-tenant superusers: accept
-		// the full Tenant payload (status, storage_quota, retriever
-		// engines, configs...) so existing tooling keeps working.
-		if err := c.ShouldBindJSON(&tenantData); err != nil {
-			logger.Error(ctx, "Failed to parse request parameters", err)
-			appErr := errors.NewValidationError("Invalid request parameters").WithDetails(err.Error())
-			c.Error(appErr)
-			return
-		}
-		// Reset client-supplied primary key so we don't accidentally
-		// insert with a chosen ID that collides with a future
-		// auto-increment value. Tenant IDs must always be DB-generated.
-		tenantData.ID = 0
-	} else {
-		// Self-service path: a regular user can only set name and
-		// description. Everything else is server-generated by
-		// TenantService.CreateTenant (status="active", storage_quota
-		// default, retriever engines from RETRIEVE_DRIVER). API keys are
-		// created explicitly through the integration API-key list.
-		var req createTenantRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			logger.Error(ctx, "Failed to parse request parameters", err)
-			appErr := errors.NewValidationError("Invalid request parameters").WithDetails(err.Error())
-			c.Error(appErr)
-			return
-		}
-
-		// Per-user quota: cap how many tenants a regular user can spin
-		// up via self-service. Without this any authenticated client
-		// can flood `tenants` (and saturate validateStorageBucketUniqueness
-		// which scans the whole table). Superusers above are exempt
-		// because they're already trusted to manage the catalog.
-		if h.memberService != nil {
-			memberships, listErr := h.memberService.ListByUser(ctx, caller.ID)
-			if listErr != nil {
-				logger.Errorf(ctx, "Failed to count owned tenants for user %s: %v", caller.ID, listErr)
-				c.Error(errors.NewInternalServerError("Failed to validate workspace quota").WithDetails(listErr.Error()))
-				return
-			}
-			ownedCount := 0
-			for _, m := range memberships {
-				if m != nil && m.Role == types.TenantRoleOwner {
-					ownedCount++
-				}
-			}
-			cap := h.resolveMaxOwnedTenantsPerUser(ctx)
-			if cap > 0 && ownedCount >= cap {
-				logger.Warnf(ctx,
-					"User %s reached self-service tenant quota (%d/%d)",
-					caller.ID, ownedCount, cap,
-				)
-				c.Error(errors.NewTooManyRequestsError(
-					"reached self-service workspace quota; contact an administrator to raise the limit",
-				))
-				return
-			}
-		}
-
-		tenantData = types.Tenant{
-			Name:        strings.TrimSpace(req.Name),
-			Description: strings.TrimSpace(req.Description),
-		}
+	if err := c.ShouldBindJSON(&tenantData); err != nil {
+		logger.Error(ctx, "Failed to parse request parameters", err)
+		c.Error(errors.NewValidationError("Invalid request parameters").WithDetails(err.Error()))
+		return
 	}
+	// Tenant IDs always come from the database sequence.
+	tenantData.ID = 0
 
 	// Apply the system-setting-driven default storage quota when the
-	// caller didn't specify one (always true for self-serve; sometimes
-	// true for the superuser branch when the JSON omits storage_quota).
+	// caller did not specify storage_quota.
 	// We resolve at create time on purpose — the on-disk row should
 	// carry an explicit value, so changing the setting later doesn't
 	// silently shrink/grow established tenants. Negative values are
@@ -360,8 +256,7 @@ func (h *TenantHandler) CreateTenant(c *gin.Context) {
 	// Bootstrap an Owner membership so the caller immediately has full
 	// control over the tenant they just created. We MUST roll the tenant
 	// back if this fails: without a membership row the new tenant is
-	// unreachable (middleware/auth.go's orphan-recovery only fires for a
-	// user's home tenant, never for a freshly-created side workspace),
+	// unreachable because authenticated access requires membership,
 	// yet still occupies storage_bucket / name uniqueness slots.
 	// Idempotent: EnsureOwner is a no-op when the row already exists,
 	// so cross-tenant superusers create-and-own through the same path.
@@ -380,53 +275,9 @@ func (h *TenantHandler) CreateTenant(c *gin.Context) {
 			return
 		}
 
-		// Quota TOCTOU guard. The earlier ownedCount check is racy:
-		// N concurrent CreateTenant calls all read ownedCount < cap,
-		// all proceed, all insert. Re-count AFTER the Owner membership
-		// is committed; if we landed over the cap, roll back this
-		// tenant + its membership so the bound holds in steady state.
-		// We only do this for non-superusers (the only path that has
-		// a cap) — superusers are exempt above.
-		if !caller.CanAccessAllTenants {
-			memberships, listErr := h.memberService.ListByUser(ctx, caller.ID)
-			if listErr != nil {
-				logger.Errorf(ctx, "Post-create quota recount failed for user %s tenant %d: %v",
-					caller.ID, createdTenant.ID, listErr)
-			} else {
-				ownedNow := 0
-				for _, m := range memberships {
-					if m != nil && m.Role == types.TenantRoleOwner {
-						ownedNow++
-					}
-				}
-				cap := h.resolveMaxOwnedTenantsPerUser(ctx)
-				if cap > 0 && ownedNow > cap {
-					logger.Warnf(ctx,
-						"User %s exceeded tenant quota after concurrent create (%d/%d), rolling back tenant %d",
-						caller.ID, ownedNow, cap, createdTenant.ID,
-					)
-					if rmErr := h.memberService.RemoveMember(ctx, caller.ID, createdTenant.ID); rmErr != nil {
-						logger.Errorf(ctx,
-							"Rollback RemoveMember failed for user %s tenant %d: %v",
-							caller.ID, createdTenant.ID, rmErr,
-						)
-					}
-					if delErr := h.service.DeleteTenant(ctx, createdTenant.ID); delErr != nil {
-						logger.Errorf(ctx,
-							"Rollback DeleteTenant failed for over-quota tenant %d: %v",
-							createdTenant.ID, delErr,
-						)
-					}
-					c.Error(errors.NewTooManyRequestsError(
-						"reached self-service workspace quota; contact an administrator to raise the limit",
-					))
-					return
-				}
-			}
-		}
 	}
 
-	// When a tenantless user creates their first workspace, make it their
+	// When a tenantless platform administrator creates a workspace, make it their
 	// default login tenant. Roll the just-created resources back if this
 	// finalisation fails so the user is not left with an unreachable tenant.
 	if caller.TenantID == 0 && !platformCaller {
