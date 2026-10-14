@@ -16,17 +16,17 @@ import (
 
 type stubFeishuUserService struct {
 	interfaces.UserService
-	getFeishuAuthorizationURL func(ctx context.Context, redirectURI string) (*types.OIDCAuthURLResponse, error)
+	getFeishuAuthorizationURL func(ctx context.Context, redirectURI, returnOrigin string) (*types.OIDCAuthURLResponse, error)
 }
 
-func (s *stubFeishuUserService) GetFeishuAuthorizationURL(ctx context.Context, redirectURI string) (*types.OIDCAuthURLResponse, error) {
-	return s.getFeishuAuthorizationURL(ctx, redirectURI)
+func (s *stubFeishuUserService) GetFeishuAuthorizationURL(ctx context.Context, redirectURI, returnOrigin string) (*types.OIDCAuthURLResponse, error) {
+	return s.getFeishuAuthorizationURL(ctx, redirectURI, returnOrigin)
 }
 
 func TestFeishuStart_RedirectsAndSetsNonce(t *testing.T) {
 	const authURL = "https://accounts.feishu.cn/open-apis/authen/v1/authorize?client_id=cli_x"
 	us := &stubFeishuUserService{
-		getFeishuAuthorizationURL: func(context.Context, string) (*types.OIDCAuthURLResponse, error) {
+		getFeishuAuthorizationURL: func(context.Context, string, string) (*types.OIDCAuthURLResponse, error) {
 			return &types.OIDCAuthURLResponse{
 				Success:          true,
 				AuthorizationURL: authURL,
@@ -60,14 +60,14 @@ func TestFeishuStart_RedirectsAndSetsNonce(t *testing.T) {
 		}
 	}
 	if !hasNonce {
-		t.Errorf("expected %s cookie", oidcNonceCookieName)
+		t.Fatalf("expected %s cookie", oidcNonceCookieName)
 	}
 }
 
 func TestFeishuStart_BuildsCallbackFromOrigin(t *testing.T) {
 	var captured string
 	us := &stubFeishuUserService{
-		getFeishuAuthorizationURL: func(_ context.Context, redirectURI string) (*types.OIDCAuthURLResponse, error) {
+		getFeishuAuthorizationURL: func(_ context.Context, redirectURI, _ string) (*types.OIDCAuthURLResponse, error) {
 			captured = redirectURI
 			return &types.OIDCAuthURLResponse{Success: true, AuthorizationURL: "https://accounts.feishu.cn/x", Nonce: "n"}, nil
 		},
@@ -86,15 +86,16 @@ func TestFeishuStart_BuildsCallbackFromOrigin(t *testing.T) {
 
 	want := "https://knowbase.example.com/api/v1/auth/feishu/callback"
 	if captured != want {
-		t.Errorf("callback = %q, want %q", captured, want)
+		t.Fatalf("callback = %q, want %q", captured, want)
 	}
 }
 
-func TestFeishuStart_UsesBrowserReturnOrigin(t *testing.T) {
-	var captured string
+func TestFeishuStart_ReturnOriginDoesNotOverrideOAuthCallback(t *testing.T) {
+	var capturedCallback, capturedReturn string
 	us := &stubFeishuUserService{
-		getFeishuAuthorizationURL: func(_ context.Context, redirectURI string) (*types.OIDCAuthURLResponse, error) {
-			captured = redirectURI
+		getFeishuAuthorizationURL: func(_ context.Context, redirectURI, returnOrigin string) (*types.OIDCAuthURLResponse, error) {
+			capturedCallback = redirectURI
+			capturedReturn = returnOrigin
 			return &types.OIDCAuthURLResponse{Success: true, AuthorizationURL: "https://accounts.feishu.cn/x", Nonce: "n"}, nil
 		},
 	}
@@ -105,13 +106,27 @@ func TestFeishuStart_UsesBrowserReturnOrigin(t *testing.T) {
 	r.GET("/auth/feishu/start", h.FeishuStart)
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/feishu/start?return_origin="+url.QueryEscape("http://127.0.0.1:5173"), nil)
-	req.Host = "localhost:8080"
+	req.Host = "127.0.0.1:8080"
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
-	want := "http://127.0.0.1:5173/api/v1/auth/feishu/callback"
-	if captured != want {
-		t.Errorf("callback = %q, want %q", captured, want)
+	wantCallback := "http://127.0.0.1:8080/api/v1/auth/feishu/callback"
+	if capturedCallback != wantCallback {
+		t.Fatalf("callback = %q, want %q", capturedCallback, wantCallback)
+	}
+	if capturedReturn != "http://127.0.0.1:5173" {
+		t.Fatalf("return_origin = %q, want http://127.0.0.1:5173", capturedReturn)
+	}
+}
+
+func TestFeishuFrontendRedirect_PrefersReturnOrigin(t *testing.T) {
+	got := feishuFrontendRedirect("http://127.0.0.1:8080/api/v1/auth/feishu/callback", "http://127.0.0.1:5173")
+	if got != "http://127.0.0.1:5173/" {
+		t.Fatalf("got %q", got)
+	}
+	got = feishuFrontendRedirect("http://127.0.0.1:8080/api/v1/auth/feishu/callback", "")
+	if got != "http://127.0.0.1:8080/" {
+		t.Fatalf("got %q", got)
 	}
 }
 

@@ -473,8 +473,9 @@ func encodeOIDCCallbackPayload(resp *types.OIDCCallbackResponse) (string, error)
 }
 
 type oidcStatePayload struct {
-	Nonce       string
-	RedirectURI string
+	Nonce        string
+	RedirectURI  string
+	ReturnOrigin string
 }
 
 func decodeOIDCState(raw string, req *http.Request) (*oidcStatePayload, error) {
@@ -490,8 +491,9 @@ func decodeOIDCState(raw string, req *http.Request) (*oidcStatePayload, error) {
 		return nil, errors.NewValidationError("oidc nonce mismatch")
 	}
 	return &oidcStatePayload{
-		Nonce:       payload.Nonce,
-		RedirectURI: strings.TrimSpace(payload.RedirectURI),
+		Nonce:        payload.Nonce,
+		RedirectURI:  strings.TrimSpace(payload.RedirectURI),
+		ReturnOrigin: strings.TrimSpace(payload.ReturnOrigin),
 	}, nil
 }
 

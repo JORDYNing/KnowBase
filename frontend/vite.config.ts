@@ -50,7 +50,9 @@ function embedHtmlDevFallback(): Plugin {
 const DEV_PROXY_TARGET =
   process.env.VITE_DEV_PROXY_TARGET ||
   process.env.FRONTEND_BACKEND_URL ||
-  'http://localhost:8080'
+  // Prefer 127.0.0.1 so Feishu OAuth redirect_uri matches the common
+  // console entry (localhost and 127.0.0.1 are different origins).
+  'http://127.0.0.1:8080'
 
 function resolveVueOfficePptxEntry(): string {
   try {

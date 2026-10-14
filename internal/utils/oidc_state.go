@@ -21,7 +21,11 @@ const oidcStateMaxAge = 10 * time.Minute
 type OIDCStatePayload struct {
 	Nonce       string `json:"nonce"`
 	RedirectURI string `json:"redirect_uri,omitempty"`
-	IssuedAt    int64  `json:"iat"`
+	// ReturnOrigin is an optional browser origin (scheme://host) used after
+	// Feishu/OIDC callback to bounce back to the SPA that started login
+	// (e.g. Vite on :5173 while the OAuth redirect_uri stays on the API).
+	ReturnOrigin string `json:"return_origin,omitempty"`
+	IssuedAt     int64  `json:"iat"`
 }
 
 var (

@@ -124,9 +124,8 @@
       </div>
     </div>
 
-    <!-- Left Showcase Section -->
-    <div class="showcase-section">
-      <div class="showcase-content">
+    <div class="login-main">
+      <div class="showcase-intro">
         <p class="showcase-subtitle">{{ $t('platform.subtitle') }}</p>
         <p class="showcase-description">{{ $t('platform.description') }}</p>
 
@@ -136,27 +135,24 @@
           <span class="tag">{{ $t('platform.wiki') }}</span>
           <span class="tag">{{ $t('platform.hybridSearch') }}</span>
         </div>
-
-        <!-- Swiper Carousel -->
-        <div class="carousel-container">
-          <swiper :modules="modules" :slides-per-view="1" :loop="true" :autoplay="{
-            delay: 4000,
-            disableOnInteraction: false,
-          }" :effect="'fade'" :fade-effect="{ crossFade: true }"
-            :pagination="{ clickable: true, dynamicBullets: false }" :speed="800" class="screenshot-swiper">
-            <swiper-slide v-for="(slide, index) in slides" :key="index">
-              <div class="slide-content">
-                <img :src="slide.image" :alt="slide.title" class="slide-image" />
-              </div>
-            </swiper-slide>
-          </swiper>
-        </div>
       </div>
-    </div>
 
-    <!-- Right Form Section -->
-    <div class="form-section">
-      <div class="form-panel">
+      <div class="carousel-container">
+        <swiper :modules="modules" :slides-per-view="1" :loop="true" :autoplay="{
+          delay: 4000,
+          disableOnInteraction: false,
+        }" :effect="'fade'" :fade-effect="{ crossFade: true }"
+          :pagination="{ clickable: true, dynamicBullets: false }" :speed="800" class="screenshot-swiper">
+          <swiper-slide v-for="(slide, index) in slides" :key="index">
+            <div class="slide-content">
+              <img :src="slide.image" :alt="slide.title" class="slide-image" />
+            </div>
+          </swiper-slide>
+        </swiper>
+      </div>
+
+      <div class="form-section">
+        <div class="form-panel">
         <!-- Login Card -->
         <div class="form-card" v-if="!isRegisterMode">
           <!-- 登录已有账号时保留邀请上下文。 -->
@@ -319,6 +315,7 @@
               </div>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>
@@ -858,11 +855,12 @@ onMounted(async () => {
 <style lang="less" scoped>
 .login-layout {
   display: flex;
+  flex-direction: column;
   width: 100%;
   min-height: 100%;
   overflow: hidden;
   position: relative;
-  background: linear-gradient(225deg, #01143a 0%, #021f58 15%, #022c77 25%, #033996 38%, #0446b5 50%, #0660F3 65%, #2B7CFF 78%, #4D97FF 90%, #A8C7F7 100%);
+  background: linear-gradient(160deg, #F7FAFF 0%, #F2F6FC 40%, #EEF3FB 100%);
 
   &::before {
     content: '';
@@ -871,10 +869,34 @@ onMounted(async () => {
     left: 0;
     right: 0;
     bottom: 0;
-    background: radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.06) 0%, transparent 50%),
-      radial-gradient(circle at 80% 50%, rgba(255, 255, 255, 0.04) 0%, transparent 50%);
+    background: radial-gradient(circle at 20% 40%, rgba(6, 96, 243, 0.06) 0%, transparent 50%),
+      radial-gradient(circle at 80% 60%, rgba(6, 96, 243, 0.04) 0%, transparent 50%);
     pointer-events: none;
   }
+}
+
+.login-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 40px;
+  row-gap: 0;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 100px 50px 80px;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 2;
+  align-items: start;
+}
+
+.showcase-intro {
+  grid-column: 1;
+  grid-row: 1;
+  max-width: 600px;
+  margin-bottom: 40px;
 }
 
 .animated-bg {
@@ -894,12 +916,11 @@ onMounted(async () => {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  background: rgba(6, 96, 243, 0.08);
+  border: 2px solid rgba(6, 96, 243, 0.18);
   box-shadow:
-    0 0 15px rgba(255, 255, 255, 0.35),
-    0 0 30px rgba(16, 185, 129, 0.2),
-    inset 0 0 8px rgba(255, 255, 255, 0.1);
+    0 0 12px rgba(6, 96, 243, 0.12),
+    inset 0 0 6px rgba(6, 96, 243, 0.06);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -910,7 +931,7 @@ onMounted(async () => {
 .node-icon {
   width: 20px;
   height: 20px;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(6, 96, 243, 0.55);
 }
 
 .node-1 {
@@ -1005,11 +1026,11 @@ onMounted(async () => {
   left: 0;
   width: 100%;
   height: 100%;
-  opacity: 0.35;
+  opacity: 0.45;
 }
 
 .connection-line {
-  stroke: rgba(255, 255, 255, 0.5);
+  stroke: rgba(6, 96, 243, 0.22);
   stroke-width: 1.5;
   stroke-dasharray: 6, 3;
   stroke-linecap: round;
@@ -1086,30 +1107,10 @@ onMounted(async () => {
   }
 }
 
-/* Left Showcase Section */
-.showcase-section {
-  flex: 0 0 52%;
-  display: flex;
-  align-items: flex-end;
-  padding: 100px 30px 100px 50px;
-  box-sizing: border-box;
-  position: relative;
-}
-
-.showcase-content {
-  width: 100%;
-  max-width: 600px;
-  position: relative;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 60px;
-}
-
 .showcase-subtitle {
   margin-top: 0;
   font-size: 22px;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--td-text-color-primary);
   margin: 0 0 8px 0;
   font-family: var(--app-font-family);
   line-height: 1.4;
@@ -1118,7 +1119,7 @@ onMounted(async () => {
 
 .showcase-description {
   font-size: var(--app-text-lg);
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--td-text-color-secondary);
   margin: 0 0 28px 0;
   font-family: var(--app-font-family);
   line-height: 1.5;
@@ -1127,16 +1128,16 @@ onMounted(async () => {
 .feature-tags {
   display: flex;
   gap: 12px;
-  margin-bottom: 40px;
+  margin-bottom: 0;
   flex-wrap: wrap;
 }
 
 .tag {
   display: inline-block;
   padding: 8px 20px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(6, 96, 243, 0.1);
   border-radius: 20px;
-  color: var(--td-text-color-anti);
+  color: #0660F3;
   font-size: var(--app-text-base);
   font-weight: 500;
   font-family: var(--app-font-family);
@@ -1144,15 +1145,19 @@ onMounted(async () => {
 
 /* Carousel */
 .carousel-container {
+  grid-column: 1;
+  grid-row: 2;
   width: 100%;
-  margin-top: 48px;
+  max-width: 600px;
+  margin-top: 0;
+  align-self: start;
 }
 
 .screenshot-swiper {
   width: 100%;
   border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 12px 40px rgba(6, 96, 243, 0.12);
   padding-bottom: 40px;
 
   :deep(.swiper-wrapper) {
@@ -1167,14 +1172,14 @@ onMounted(async () => {
   :deep(.swiper-pagination-bullet) {
     width: 10px;
     height: 10px;
-    background: rgba(255, 255, 255, 0.5);
+    background: rgba(6, 96, 243, 0.28);
     opacity: 1;
     transition: all var(--app-motion-slow) ease;
     margin: 0 6px !important;
   }
 
   :deep(.swiper-pagination-bullet-active) {
-    background: var(--td-bg-color-container);
+    background: #0660F3;
     width: 28px;
     border-radius: 5px;
   }
@@ -1200,19 +1205,22 @@ onMounted(async () => {
 
 /* Right Form Section */
 .form-section {
-  flex: 0 0 48%;
+  grid-column: 2;
+  grid-row: 2;
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: center;
-  padding: 112px 50px 100px 30px;
+  padding: 0;
   box-sizing: border-box;
   position: relative;
+  align-self: start;
+  width: 100%;
 }
 
 .form-panel {
   width: 100%;
   max-width: 480px;
-  margin-bottom: 60px;
+  margin-bottom: 0;
   position: relative;
   z-index: 2;
 }
@@ -1245,9 +1253,9 @@ onMounted(async () => {
   gap: 7px;
   padding: 9px 15px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  color: var(--td-text-color-anti);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(6, 96, 243, 0.14);
+  color: var(--td-text-color-primary);
   text-decoration: none;
   font-size: var(--app-text-md);
   font-weight: 600;
@@ -1255,6 +1263,7 @@ onMounted(async () => {
   letter-spacing: 0.2px;
   cursor: pointer;
   position: relative;
+  box-shadow: 0 2px 8px rgba(6, 96, 243, 0.08);
 
   svg {
     flex-shrink: 0;
@@ -1265,9 +1274,9 @@ onMounted(async () => {
   }
 
   &:hover {
-    background: rgba(255, 255, 255, 0.3);
-    border-color: rgba(255, 255, 255, 0.4);
-    color: var(--td-text-color-anti);
+    background: #ffffff;
+    border-color: rgba(6, 96, 243, 0.28);
+    color: var(--td-text-color-primary);
   }
 }
 
@@ -1275,9 +1284,9 @@ onMounted(async () => {
   position: relative;
 
   button {
-    background: rgba(255, 255, 255, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    color: var(--td-text-color-anti);
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(6, 96, 243, 0.14);
+    color: var(--td-text-color-primary);
 
     .lang-flag-icon {
       font-size: var(--app-text-xl);
@@ -1286,8 +1295,8 @@ onMounted(async () => {
     }
 
     &:hover {
-      background: rgba(255, 255, 255, 0.3);
-      border-color: rgba(255, 255, 255, 0.4);
+      background: #ffffff;
+      border-color: rgba(6, 96, 243, 0.28);
     }
 
     svg:last-child {
@@ -1667,6 +1676,11 @@ onMounted(async () => {
     display: none;
   }
 
+  .login-main {
+    padding: 90px 40px 64px;
+    column-gap: 28px;
+  }
+
   .showcase-subtitle {
     font-size: var(--app-text-2xl);
   }
@@ -1697,10 +1711,6 @@ onMounted(async () => {
 }
 
 @media (max-width: 768px) {
-  .login-layout {
-    flex-direction: column;
-  }
-
   .knowledge-node:nth-of-type(n + 9) {
     display: none;
   }
@@ -1709,14 +1719,30 @@ onMounted(async () => {
     display: none;
   }
 
-  .showcase-section {
-    flex: 0 0 auto;
-    min-height: 50vh;
-    padding: 40px 24px;
+  .login-main {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    padding: 80px 24px 40px;
+    row-gap: 24px;
   }
 
-  .showcase-content {
+  .showcase-intro {
+    grid-column: 1;
+    grid-row: 1;
     max-width: 100%;
+    margin-bottom: 0;
+  }
+
+  .carousel-container {
+    grid-column: 1;
+    grid-row: 2;
+    max-width: 100%;
+  }
+
+  .form-section {
+    grid-column: 1;
+    grid-row: 3;
+    padding: 0;
   }
 
   .header-logo {
@@ -1730,20 +1756,6 @@ onMounted(async () => {
 
   .showcase-subtitle {
     font-size: var(--app-text-xl);
-    margin-bottom: 24px;
-  }
-
-  .feature-tags {
-    margin-bottom: 24px;
-  }
-
-  .carousel-container {
-    margin-top: 24px;
-  }
-
-  .form-section {
-    flex: 0 0 auto;
-    padding: 24px;
   }
 
   .header-links {
@@ -1775,8 +1787,8 @@ onMounted(async () => {
     display: none;
   }
 
-  .showcase-section {
-    padding: 32px 20px;
+  .login-main {
+    padding: 72px 20px 32px;
   }
 
   .header-logo {
@@ -1795,10 +1807,6 @@ onMounted(async () => {
   .tag {
     font-size: var(--app-text-sm);
     padding: 6px 16px;
-  }
-
-  .form-section {
-    padding: 20px;
   }
 
   .header-links {
@@ -1838,76 +1846,106 @@ onMounted(async () => {
 
 <style lang="less">
 html[theme-mode="dark"] {
+  /* Keep login page light so the Gamelib logo stays readable. */
   .login-layout {
-    background: linear-gradient(225deg, #011a14 0%, #032e22 15%, #043a2c 25%, #05503d 38%, #046647 50%, #038a56 65%, #049b60 78%, #06a06a 90%, #07b074 100%);
+    background: linear-gradient(160deg, #F7FAFF 0%, #F2F6FC 40%, #EEF3FB 100%);
   }
 
-  .knowledge-node {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.2);
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.15);
-  }
-
-  .connection-line {
-    stroke: rgba(255, 255, 255, 0.25);
-  }
-
-  .header-link {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.15);
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.2);
-    }
-  }
-
+  .showcase-subtitle,
+  .header-link,
   .language-switch button {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.15);
+    color: #1a1a1a !important;
+  }
+
+  .showcase-description,
+  .login-features .feature-text {
+    color: rgba(0, 0, 0, 0.55) !important;
+  }
+
+  .tag {
+    background: rgba(6, 96, 243, 0.1) !important;
+    color: #0660F3 !important;
+  }
+
+  .header-link,
+  .language-switch button {
+    background: rgba(255, 255, 255, 0.92) !important;
+    border-color: rgba(6, 96, 243, 0.14) !important;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.2);
+      background: #ffffff !important;
+      border-color: rgba(6, 96, 243, 0.28) !important;
     }
   }
 
   .language-dropdown {
-    background: rgba(36, 36, 36, 0.97) !important;
-    border-color: var(--td-component-stroke) !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+    background: rgba(255, 255, 255, 0.97) !important;
+    border-color: #e7e7e7 !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
   }
 
-  .tag {
-    background: rgba(255, 255, 255, 0.12);
+  .language-option {
+    color: #1a1a1a !important;
+
+    &:hover {
+      background: #f3f3f3 !important;
+    }
+
+    &.active {
+      background: #e7f0fe !important;
+      color: #0552d4 !important;
+    }
   }
 
   .form-card {
-    background: rgba(36, 36, 36, 0.97) !important;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4) !important;
+    background: rgba(255, 255, 255, 0.97) !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important;
   }
 
-  .register-cta__divider span {
-    background: rgba(36, 36, 36, 0.97);
+  .form-title,
+  .form-content .t-form-item__label {
+    color: #1a1a1a !important;
+  }
+
+  .form-welcome,
+  .form-subtitle,
+  .form-footer {
+    color: rgba(0, 0, 0, 0.55) !important;
+  }
+
+  .register-cta__divider span,
+  .oidc-divider span {
+    background: rgba(255, 255, 255, 0.97);
   }
 
   .form-content .t-input {
-    background: var(--td-bg-color-page) !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
+    background: #ffffff !important;
+    border-color: #e7e7e7 !important;
+
+    .t-input__inner {
+      color: #1a1a1a !important;
+    }
 
     &:hover {
-      border-color: var(--td-brand-color) !important;
+      border-color: #0660F3 !important;
     }
 
     &:focus-within {
-      border-color: var(--td-brand-color) !important;
+      border-color: #0660F3 !important;
     }
   }
 
+  .screenshot-swiper .swiper-pagination-bullet {
+    background: rgba(6, 96, 243, 0.28) !important;
+  }
+
   .screenshot-swiper .swiper-pagination-bullet-active {
-    background: rgba(255, 255, 255, 0.9) !important;
+    background: #0660F3 !important;
   }
 
   .login-features .feature-icon {
-    background: color-mix(in srgb, var(--td-brand-color) 15%, transparent);
+    background: #e7f0fe;
+    color: #0552d4;
   }
 }
 </style>

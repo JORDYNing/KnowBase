@@ -32,13 +32,15 @@ func (h *AuthHandler) GetFeishuConfig(c *gin.Context) {
 
 // FeishuStart godoc
 // @Summary      发起飞书登录（直接 302）
-// @Description  直接 302 到飞书授权页，回调地址由请求自身 origin 推导
+// @Description  直接 302 到飞书授权页。OAuth redirect_uri 始终指向本后端
+// 回调（需在飞书开放平台登记）；可选 return_origin 仅用于登录完成后跳回 SPA。
 // @Tags         认证
 // @Success      302
 // @Router       /auth/feishu/start [get]
 func (h *AuthHandler) FeishuStart(c *gin.Context) {
 	ctx := c.Request.Context()
-	resp, err := h.userService.GetFeishuAuthorizationURL(ctx, feishuCallbackURL(c))
+	returnOrigin := sanitizeReturnOrigin(c.Query("return_origin"))
+	resp, err := h.userService.GetFeishuAuthorizationURL(ctx, feishuCallbackURL(c), returnOrigin)
 	if err != nil {
 		logger.Errorf(ctx, "Failed to generate Feishu authorization URL: %v", err)
 		appErr := errors.NewForbiddenError("Feishu authorization unavailable").WithDetails(err.Error())
@@ -60,7 +62,7 @@ func (h *AuthHandler) FeishuStart(c *gin.Context) {
 // @Router       /auth/feishu/callback [get]
 func (h *AuthHandler) FeishuRedirectCallback(c *gin.Context) {
 	ctx := c.Request.Context()
-	frontendRedirectURI := feishuFrontendRedirect("")
+	frontendRedirectURI := feishuFrontendRedirect("", "")
 
 	if providerError := strings.TrimSpace(c.Query("error")); providerError != "" {
 		redirectURL := frontendRedirectURI + "#oidc_error=" + urlQueryEscape(providerError)
@@ -79,7 +81,7 @@ func (h *AuthHandler) FeishuRedirectCallback(c *gin.Context) {
 		return
 	}
 	if decodedState != nil {
-		frontendRedirectURI = feishuFrontendRedirect(decodedState.RedirectURI)
+		frontendRedirectURI = feishuFrontendRedirect(decodedState.RedirectURI, decodedState.ReturnOrigin)
 	}
 	c.SetCookie(oidcNonceCookieName, "", -1, "/", "", false, true)
 
@@ -115,10 +117,11 @@ func (h *AuthHandler) FeishuRedirectCallback(c *gin.Context) {
 	c.Redirect(http.StatusFound, frontendRedirectURI+"#oidc_result="+urlQueryEscape(payload))
 }
 
+// feishuCallbackURL is the OAuth redirect_uri sent to Feishu. It always points
+// at this backend (request Host / X-Forwarded-*), never at the Vite SPA origin.
+// Register the exact URL in the Feishu developer console, e.g.
+// http://127.0.0.1:8080/api/v1/auth/feishu/callback
 func feishuCallbackURL(c *gin.Context) string {
-	if origin := sanitizeReturnOrigin(c.Query("return_origin")); origin != "" {
-		return origin + "/api/v1/auth/feishu/callback"
-	}
 	scheme := "http"
 	if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
 		scheme = "https"
@@ -130,9 +133,8 @@ func feishuCallbackURL(c *gin.Context) string {
 	return scheme + "://" + host + "/api/v1/auth/feishu/callback"
 }
 
-// sanitizeReturnOrigin accepts only an http(s) origin. The browser sends the
-// page it is actually on, so the Feishu redirect returns to the SPA instead
-// of the API port behind the dev proxy.
+// sanitizeReturnOrigin accepts only an http(s) origin. Used after Feishu
+// callback to bounce the browser back to the SPA that started login.
 func sanitizeReturnOrigin(raw string) string {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Host == "" || u.User != nil {
@@ -147,7 +149,10 @@ func sanitizeReturnOrigin(raw string) string {
 	return u.Scheme + "://" + u.Host
 }
 
-func feishuFrontendRedirect(callbackURL string) string {
+func feishuFrontendRedirect(callbackURL, returnOrigin string) string {
+	if origin := sanitizeReturnOrigin(returnOrigin); origin != "" {
+		return origin + "/"
+	}
 	u, err := url.Parse(strings.TrimSpace(callbackURL))
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return "/"

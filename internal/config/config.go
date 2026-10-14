@@ -811,6 +811,7 @@ func applyFeishuLoginEnvOverrides(cfg *Config) {
 		cfg.FeishuLogin.AppSecret = value
 	}
 	if value := strings.TrimSpace(os.Getenv("FEISHU_LOGIN_SCOPES")); value != "" {
+		value = strings.Trim(value, `"'`)
 		cfg.FeishuLogin.Scopes = strings.Fields(strings.ReplaceAll(value, ",", " "))
 	}
 	if value := strings.TrimSpace(os.Getenv("FEISHU_LOGIN_AUTHORIZATION_ENDPOINT")); value != "" {

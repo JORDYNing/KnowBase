@@ -19,7 +19,9 @@ type UserService interface {
 	// (resolved by the caller from auth.default_tenant_mode).
 	LoginWithOIDC(ctx context.Context, code, redirectURI string, provisioning types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error)
 	// GetFeishuAuthorizationURL builds the Feishu OAuth authorization URL.
-	GetFeishuAuthorizationURL(ctx context.Context, redirectURI string) (*types.OIDCAuthURLResponse, error)
+	// redirectURI is the backend callback registered with Feishu; returnOrigin
+	// is an optional SPA origin to bounce to after the callback completes.
+	GetFeishuAuthorizationURL(ctx context.Context, redirectURI, returnOrigin string) (*types.OIDCAuthURLResponse, error)
 	// LoginWithFeishu exchanges the Feishu authorization code, binds or
 	// provisions a local user, and issues the same local JWT pair as OIDC.
 	LoginWithFeishu(ctx context.Context, code, redirectURI string, provisioning types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error)

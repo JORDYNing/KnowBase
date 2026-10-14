@@ -174,7 +174,7 @@ func TestGetFeishuAuthorizationURL(t *testing.T) {
 		Scopes:                []string{"contact:user.base:readonly"},
 		AuthorizationEndpoint: "https://accounts.feishu.cn/open-apis/authen/v1/authorize",
 	}}}
-	resp, err := svc.GetFeishuAuthorizationURL(context.Background(), "https://app.example/api/v1/auth/feishu/callback")
+	resp, err := svc.GetFeishuAuthorizationURL(context.Background(), "https://app.example/api/v1/auth/feishu/callback", "http://127.0.0.1:5173")
 	if err != nil {
 		t.Fatalf("GetFeishuAuthorizationURL: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestGetFeishuAuthorizationURL(t *testing.T) {
 
 func TestGetFeishuAuthorizationURLDisabled(t *testing.T) {
 	svc := &userService{config: &config.Config{}}
-	_, err := svc.GetFeishuAuthorizationURL(context.Background(), "https://app.example/callback")
+	_, err := svc.GetFeishuAuthorizationURL(context.Background(), "https://app.example/callback", "")
 	if !errors.Is(err, ErrFeishuLoginDisabled) {
 		t.Fatalf("error = %v, want ErrFeishuLoginDisabled", err)
 	}

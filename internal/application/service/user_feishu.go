@@ -68,8 +68,8 @@ type feishuUserInfoData struct {
 }
 
 // GetFeishuAuthorizationURL builds the Feishu OAuth authorization URL and a
-// signed state payload (nonce + redirect_uri), matching the OIDC start flow.
-func (s *userService) GetFeishuAuthorizationURL(ctx context.Context, redirectURI string) (*types.OIDCAuthURLResponse, error) {
+// signed state payload (nonce + redirect_uri [+ optional return_origin]).
+func (s *userService) GetFeishuAuthorizationURL(ctx context.Context, redirectURI, returnOrigin string) (*types.OIDCAuthURLResponse, error) {
 	cfg, err := s.getFeishuLoginConfig()
 	if err != nil {
 		return nil, err
@@ -86,8 +86,9 @@ func (s *userService) GetFeishuAuthorizationURL(ctx context.Context, redirectURI
 		return nil, fmt.Errorf("failed to generate state: %w", err)
 	}
 	state, err := secutils.SignOIDCState(&secutils.OIDCStatePayload{
-		Nonce:       nonce,
-		RedirectURI: strings.TrimSpace(redirectURI),
+		Nonce:        nonce,
+		RedirectURI:  strings.TrimSpace(redirectURI),
+		ReturnOrigin: strings.TrimSpace(returnOrigin),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode Feishu state: %w", err)
