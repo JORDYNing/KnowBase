@@ -453,65 +453,11 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 		}, nil
 
 	case "post":
-		// Rich text: extract plain text for QA
-		var postContent struct {
-			Title   string              `json:"title"`
-			Content [][]json.RawMessage `json:"content"`
+		message, err := parsePostContent(a.region, msg.Content, openID, chatID, chatType, msg.MessageID)
+		if message != nil {
+			message.ThreadID = threadID
 		}
-		if err := json.Unmarshal([]byte(msg.Content), &postContent); err != nil {
-			return nil, fmt.Errorf("unmarshal post content: %w", err)
-		}
-
-		var textParts []string
-		if postContent.Title != "" {
-			textParts = append(textParts, postContent.Title)
-		}
-		for _, line := range postContent.Content {
-			var lineText strings.Builder
-			for _, elem := range line {
-				var tag struct {
-					Tag  string `json:"tag"`
-					Text string `json:"text"`
-				}
-				if err := json.Unmarshal(elem, &tag); err != nil {
-					continue
-				}
-				switch tag.Tag {
-				case "text", "a":
-					lineText.WriteString(tag.Text)
-				}
-			}
-			if t := strings.TrimSpace(lineText.String()); t != "" {
-				textParts = append(textParts, t)
-			}
-		}
-
-		content := strings.Join(textParts, "\n")
-		if chatType == im.ChatTypeGroup {
-			for strings.HasPrefix(content, "@_user_") {
-				idx := strings.Index(content, " ")
-				if idx >= 0 {
-					content = content[idx+1:]
-				} else {
-					break
-				}
-			}
-		}
-		content = strings.TrimSpace(content)
-		if content == "" {
-			return nil, nil
-		}
-
-		return &im.IncomingMessage{
-			Platform:    a.region.Platform,
-			MessageType: im.MessageTypeText,
-			UserID:      openID,
-			ChatID:      chatID,
-			ChatType:    chatType,
-			Content:     content,
-			MessageID:   msg.MessageID,
-			ThreadID:    threadID,
-		}, nil
+		return message, err
 
 	default:
 		logger.Infof(c.Request.Context(), "[%s] Ignoring unsupported message type: %s", a.region.Label, msg.MessageType)

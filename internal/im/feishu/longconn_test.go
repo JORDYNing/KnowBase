@@ -1,7 +1,12 @@
 package feishu
 
 import (
+	"encoding/json"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/Tencent/WeKnora/internal/im"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
@@ -64,5 +69,54 @@ func TestConvertPostEventKeepsTextOnlyPostsAsText(t *testing.T) {
 	}
 	if got.FileKey != "" {
 		t.Fatalf("FileKey = %q, want empty", got.FileKey)
+	}
+}
+
+func TestPostFileAttachments(t *testing.T) {
+	payload := `{"title":"","content":[[{"tag":"text","text":"上传文件","style":[]}]],"content_v2":[[{"tag":"text","text":"上传文件","style":[]}]],"files":[{"file_key":"file_v3_x","file_name":"测试.md","is_folder":false}]}`
+	for _, tc := range []struct {
+		name, content, text, fileKey, fileName string
+		messageType                            im.MessageType
+	}{
+		{"file with text", payload, "上传文件", "file_v3_x", "测试.md", im.MessageTypeFile},
+		{"localized file", `{"zh_cn":` + payload + `}`, "上传文件", "file_v3_x", "测试.md", im.MessageTypeFile},
+		{"file without text", `{"files":[{"file_key":"file_v3_x","file_name":"测试.md","is_folder":false}]}`, "", "file_v3_x", "测试.md", im.MessageTypeFile},
+		{"first file", `{"files":[{"file_key":"file_v3_x","file_name":"测试.md"},{"file_key":"file_v3_y","file_name":"second.md"}]}`, "", "file_v3_x", "测试.md", im.MessageTypeFile},
+		{"embedded image", `{"content":[[{"tag":"text","text":"图片"},{"tag":"img","image_key":"img_v3_x"}]]}`, "图片", "img_v3_x", "img_v3_x.png", im.MessageTypeImage},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, transport := range []string{"websocket", "webhook"} {
+				t.Run(transport, func(t *testing.T) {
+					var got *im.IncomingMessage
+					if transport == "websocket" {
+						got = convertPostEvent(RegionFeishu, &larkim.EventMessage{Content: &tc.content}, "ou_user", "oc_group", im.ChatTypeGroup, "om_message")
+					} else {
+						encodedContent, err := json.Marshal(tc.content)
+						if err != nil {
+							t.Fatal(err)
+						}
+						body := `{"header":{"event_type":"im.message.receive_v1"},"event":{"sender":{"sender_id":{"open_id":"ou_user"}},"message":{"message_type":"post","message_id":"om_message","root_id":"om_root","chat_type":"group","chat_id":"oc_group","content":` + string(encodedContent) + `}}}`
+						ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+						ctx.Request = httptest.NewRequest("POST", "/", strings.NewReader(body))
+						got, err = (&Adapter{region: RegionFeishu}).ParseCallback(ctx)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if got != nil && got.ThreadID != "om_root" {
+							t.Fatalf("ThreadID = %q", got.ThreadID)
+						}
+					}
+					if got == nil {
+						t.Fatal("post returned nil")
+					}
+					if got.MessageType != tc.messageType || got.Content != tc.text || got.FileKey != tc.fileKey || got.FileName != tc.fileName {
+						t.Fatalf("unexpected attachment: %+v", got)
+					}
+					if got.MessageID != "om_message" || got.UserID != "ou_user" || got.ChatID != "oc_group" || got.ChatType != im.ChatTypeGroup || got.Platform != RegionFeishu.Platform {
+						t.Fatalf("unexpected message metadata: %+v", got)
+					}
+				})
+			}
+		})
 	}
 }
