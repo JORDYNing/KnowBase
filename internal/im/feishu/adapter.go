@@ -66,6 +66,8 @@ type Adapter struct {
 	tokenMu    sync.Mutex
 	tokenCache string
 	tokenExpAt time.Time
+	botMu      sync.Mutex
+	botOpenID  string
 }
 
 // NewAdapter creates a new adapter for the given region (RegionFeishu or RegionLark).
@@ -299,6 +301,9 @@ type feishuMessage struct {
 	ChatType    string `json:"chat_type"`
 	ChatID      string `json:"chat_id"`
 	Content     string `json:"content"`
+	Mentions    []struct {
+		ID *feishuSenderID `json:"id"`
+	} `json:"mentions"`
 }
 
 type feishuSender struct {
@@ -310,7 +315,7 @@ type feishuSenderID struct {
 }
 
 // ParseCallback parses a Feishu event callback into a unified IncomingMessage.
-func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
+func (a *Adapter) ParseCallback(c *gin.Context) (incoming *im.IncomingMessage, err error) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
@@ -352,6 +357,15 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 		return nil, nil
 	}
 	msg := eventBody.Event.Message
+	defer func() {
+		if incoming != nil {
+			for _, mention := range msg.Mentions {
+				if mention.ID != nil {
+					incoming.MentionedUserIDs = append(incoming.MentionedUserIDs, mention.ID.OpenID)
+				}
+			}
+		}
+	}()
 
 	// Compute thread ID: use root_id for threaded replies, or message_id for top-level messages.
 	threadID := msg.RootID
@@ -453,65 +467,11 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 		}, nil
 
 	case "post":
-		// Rich text: extract plain text for QA
-		var postContent struct {
-			Title   string              `json:"title"`
-			Content [][]json.RawMessage `json:"content"`
+		message, err := parsePostContent(a.region, msg.Content, openID, chatID, chatType, msg.MessageID)
+		if message != nil {
+			message.ThreadID = threadID
 		}
-		if err := json.Unmarshal([]byte(msg.Content), &postContent); err != nil {
-			return nil, fmt.Errorf("unmarshal post content: %w", err)
-		}
-
-		var textParts []string
-		if postContent.Title != "" {
-			textParts = append(textParts, postContent.Title)
-		}
-		for _, line := range postContent.Content {
-			var lineText strings.Builder
-			for _, elem := range line {
-				var tag struct {
-					Tag  string `json:"tag"`
-					Text string `json:"text"`
-				}
-				if err := json.Unmarshal(elem, &tag); err != nil {
-					continue
-				}
-				switch tag.Tag {
-				case "text", "a":
-					lineText.WriteString(tag.Text)
-				}
-			}
-			if t := strings.TrimSpace(lineText.String()); t != "" {
-				textParts = append(textParts, t)
-			}
-		}
-
-		content := strings.Join(textParts, "\n")
-		if chatType == im.ChatTypeGroup {
-			for strings.HasPrefix(content, "@_user_") {
-				idx := strings.Index(content, " ")
-				if idx >= 0 {
-					content = content[idx+1:]
-				} else {
-					break
-				}
-			}
-		}
-		content = strings.TrimSpace(content)
-		if content == "" {
-			return nil, nil
-		}
-
-		return &im.IncomingMessage{
-			Platform:    a.region.Platform,
-			MessageType: im.MessageTypeText,
-			UserID:      openID,
-			ChatID:      chatID,
-			ChatType:    chatType,
-			Content:     content,
-			MessageID:   msg.MessageID,
-			ThreadID:    threadID,
-		}, nil
+		return message, err
 
 	default:
 		logger.Infof(c.Request.Context(), "[%s] Ignoring unsupported message type: %s", a.region.Label, msg.MessageType)
