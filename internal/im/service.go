@@ -1710,6 +1710,35 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 		}
 	}
 
+	// File uploads are acknowledged after persistence, independently of @mentions.
+	if msg.MessageType == MessageTypeFile {
+		go s.saveIMFileAndReply(withIMIdentity(context.WithoutCancel(ctx), channel, msg), msg, channel, adapter)
+		return nil
+	}
+
+	// Apply the mention gate before any replies, including rate-limit and command hints.
+	ignore, err := s.shouldIgnoreUnmentionedGroupMessage(ctx, msg, channel, adapter)
+	if err != nil {
+		logger.Warnf(ctx, "[IM] Group mention check failed: %v", err)
+		return nil
+	}
+	if ignore {
+		if channel.KnowledgeBaseID != "" && msg.MessageType == MessageTypeImage {
+			go func() {
+				saveCtx := withIMIdentity(context.WithoutCancel(ctx), channel, msg)
+				_, _, downloaded, err := s.prepareIMAttachments(saveCtx, msg, adapter)
+				if err != nil {
+					logger.Warnf(saveCtx, "[IM] Silent attachment preparation failed: %v", err)
+					return
+				}
+				if downloaded != nil {
+					s.processDownloadedFileToKnowledgeBase(saveCtx, channel, downloaded)
+				}
+			}()
+		}
+		return nil
+	}
+
 	// Resolve threadID for key building — only include in thread mode to avoid
 	// leaking thread scope into user-mode rate limit / inflight keys.
 	threadID := ""
@@ -1742,10 +1771,8 @@ func (s *Service) HandleMessage(ctx context.Context, msg *IncomingMessage, chann
 		msg.MessageID, msg.Extra["raw_msgtype"], msg.FileKey, msg.FileName)
 
 	// ── File/Image message handling ──
-	// File messages use the normal QA path as well.  A configured knowledge base
-	// only adds a best-effort, asynchronous save; it must never replace or block
-	// the reply to this message.  With no configured knowledge base, simply skip
-	// the save rather than rejecting the message.
+	// Images use the normal QA path, with a best-effort background save when
+	// a knowledge base is configured. File messages were handled above.
 	if msg.MessageType == MessageTypeFile || msg.MessageType == MessageTypeImage {
 		msg.Content = fileMessageQAContent(msg)
 	}
@@ -3422,10 +3449,8 @@ func fileMessageQAContent(msg *IncomingMessage) string {
 	return fmt.Sprintf("我上传了文件「%s」。请确认已收到，并告知我接下来可以如何协助。", fileName)
 }
 
-// processDownloadedFileToKnowledgeBase stores bytes already downloaded for QA.
-// It deliberately has no user-facing notifications: the originating file message
-// receives exactly its normal QA reply, while persistence remains background work.
-func (s *Service) processDownloadedFileToKnowledgeBase(ctx context.Context, channel *IMChannel, file *imDownloadedAttachment) {
+// processDownloadedFileToKnowledgeBase reports whether the file was newly created.
+func (s *Service) processDownloadedFileToKnowledgeBase(ctx context.Context, channel *IMChannel, file *imDownloadedAttachment) (bool, error) {
 	kbID := channel.KnowledgeBaseID
 	tenantID := channel.TenantID
 
@@ -3433,7 +3458,7 @@ func (s *Service) processDownloadedFileToKnowledgeBase(ctx context.Context, chan
 	tenant, err := s.tenantService.GetTenantByID(ctx, tenantID)
 	if err != nil {
 		logger.Errorf(ctx, "[IM] Failed to get tenant %d for file processing: %v", tenantID, err)
-		return
+		return false, err
 	}
 	kbCtx := context.WithValue(ctx, types.TenantIDContextKey, tenantID)
 	kbCtx = context.WithValue(kbCtx, types.TenantInfoContextKey, tenant)
@@ -3442,7 +3467,7 @@ func (s *Service) processDownloadedFileToKnowledgeBase(ctx context.Context, chan
 	ext := fileExtension(fileName)
 	if !supportedKBFileExts[ext] {
 		logger.Infof(ctx, "[IM] Unsupported file type after download: %s (file=%s)", ext, fileName)
-		return
+		return false, fmt.Errorf("unsupported file type: %s", ext)
 	}
 
 	// Create a multipart.FileHeader compatible wrapper
@@ -3451,17 +3476,17 @@ func (s *Service) processDownloadedFileToKnowledgeBase(ctx context.Context, chan
 	// Create knowledge entry via the knowledge service
 	knowledge, err := s.knowledgeService.CreateKnowledgeFromFile(kbCtx, kbID, fh, nil, nil, "", nil, imPlatformToChannel(channel.Platform), nil)
 	if err != nil {
-		errMsg := err.Error()
-		// Check for duplicate file
-		if strings.Contains(errMsg, "duplicate") || strings.Contains(errMsg, "already exists") {
+		var duplicate *types.DuplicateKnowledgeError
+		if errors.As(err, &duplicate) && duplicate.Knowledge != nil {
 			logger.Infof(ctx, "[IM] File already exists in knowledge base: %s", fileName)
-			return
+			return false, nil
 		}
 		logger.Errorf(ctx, "[IM] Failed to create knowledge from file: %v", err)
-		return
+		return false, err
 	}
 
 	logger.Infof(ctx, "[IM] File saved to knowledge base: kb=%s knowledge=%s file=%s", kbID, knowledge.ID, fileName)
+	return true, nil
 }
 
 // fileExtension extracts the lowercase file extension from a filename.

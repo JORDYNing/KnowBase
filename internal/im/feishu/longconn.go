@@ -108,13 +108,22 @@ func (l *feishuLoggerAdapter) Error(ctx context.Context, args ...interface{}) {
 
 // convertEvent converts a Feishu/Lark SDK event to a unified IncomingMessage.
 // Supports text, file, image and post messages. Returns nil for other types.
-func convertEvent(region Region, event *larkim.P2MessageReceiveV1) *im.IncomingMessage {
+func convertEvent(region Region, event *larkim.P2MessageReceiveV1) (incoming *im.IncomingMessage) {
 	if event == nil || event.Event == nil || event.Event.Message == nil {
 		logger.Warnf(context.Background(), "[%s][RX] event dropped: nil event/event/message", region.Label)
 		return nil
 	}
 
 	msg := event.Event.Message
+	defer func() {
+		if incoming != nil {
+			for _, mention := range msg.Mentions {
+				if mention != nil && mention.Id != nil && mention.Id.OpenId != nil {
+					incoming.MentionedUserIDs = append(incoming.MentionedUserIDs, *mention.Id.OpenId)
+				}
+			}
+		}
+	}()
 
 	// Debug: log every raw receive event so we can see exactly what the platform
 	// delivers (or doesn't). This is the single chokepoint for all message
