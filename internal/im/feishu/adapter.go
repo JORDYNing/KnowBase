@@ -66,6 +66,8 @@ type Adapter struct {
 	tokenMu    sync.Mutex
 	tokenCache string
 	tokenExpAt time.Time
+	botMu      sync.Mutex
+	botOpenID  string
 }
 
 // NewAdapter creates a new adapter for the given region (RegionFeishu or RegionLark).
@@ -299,6 +301,9 @@ type feishuMessage struct {
 	ChatType    string `json:"chat_type"`
 	ChatID      string `json:"chat_id"`
 	Content     string `json:"content"`
+	Mentions    []struct {
+		ID *feishuSenderID `json:"id"`
+	} `json:"mentions"`
 }
 
 type feishuSender struct {
@@ -310,7 +315,7 @@ type feishuSenderID struct {
 }
 
 // ParseCallback parses a Feishu event callback into a unified IncomingMessage.
-func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
+func (a *Adapter) ParseCallback(c *gin.Context) (incoming *im.IncomingMessage, err error) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
@@ -352,6 +357,15 @@ func (a *Adapter) ParseCallback(c *gin.Context) (*im.IncomingMessage, error) {
 		return nil, nil
 	}
 	msg := eventBody.Event.Message
+	defer func() {
+		if incoming != nil {
+			for _, mention := range msg.Mentions {
+				if mention.ID != nil {
+					incoming.MentionedUserIDs = append(incoming.MentionedUserIDs, mention.ID.OpenID)
+				}
+			}
+		}
+	}()
 
 	// Compute thread ID: use root_id for threaded replies, or message_id for top-level messages.
 	threadID := msg.RootID

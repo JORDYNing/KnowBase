@@ -1,0 +1,33 @@
+{
+  "release": "im-mention-file-ack-20261027",
+  "checked_at": "2026-10-27T15:32:34.363199+08:00",
+  "deployment_scope": [
+    "app"
+  ],
+  "change": "Feishu/Lark smart reasoning group replies require an explicit bot mention; file messages are saved and acknowledged regardless of mention.",
+  "database_operation": "app_only_no_schema_or_data_migration",
+  "app_image": "knowbase/app:im-mention-file-ack-20261027|sha256:395da62f6596f73995558f275ff76cdce92796a79302cc9e09a0d98c64ff3611|amd64",
+  "build": {
+    "platform": "linux/amd64",
+    "runtime_base": "knowbase/app:im-post-files-20261022",
+    "recipe": "Compile frozen server source with make build-prod GO_BUILD_TAGS=anydoc using the audited amd64 builder; replace only /app/Gamelib on the unchanged deployed runtime.",
+    "binary_sha256": "96eb9661fa099af91702a5259ade87c16998c7215e6dd41859210326763a8307",
+    "anydoc_enabled": true
+  },
+  "checks": {
+    "five_services_healthy": true,
+    "other_four_container_identities_unchanged": true,
+    "schema_version": 117,
+    "schema_dirty": false,
+    "database_counts_preserved": true,
+    "environment_unchanged": true,
+    "data_disk_mounts_verified": true,
+    "feishu_websocket_connected": true
+  },
+  "validation": [
+    "go test ./internal/im ./internal/im/feishu -count=1 passed on Linux amd64",
+    "CSV and DOCX with embedded image parsing smoke tests passed",
+    "No real group messages sent for interactive validation"
+  ],
+  "source_note": "Deployment used the server working-tree snapshot. Git commits preserve the repository module path and include only the IM change and its rich-text file prerequisite."
+}

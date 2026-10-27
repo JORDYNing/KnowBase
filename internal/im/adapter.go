@@ -58,6 +58,8 @@ type IncomingMessage struct {
 	ChatID string
 	// ChatType distinguishes direct message from group chat.
 	ChatType ChatType
+	// MentionedUserIDs contains platform user IDs explicitly mentioned in this message.
+	MentionedUserIDs []string
 	// Content is the text content of the message (empty for file messages).
 	Content string
 	// MessageID is the IM-platform message identifier (for dedup).
