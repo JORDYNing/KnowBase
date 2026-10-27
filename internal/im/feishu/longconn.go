@@ -270,8 +270,7 @@ func convertImageEvent(
 }
 
 // convertPostEvent handles rich-text (post) message type.
-// Extracts plain text and the first embedded image so mixed posts can use the
-// same attachment pipeline as standalone image messages.
+// Extracts plain text and the first attachment for the attachment pipeline.
 func convertPostEvent(
 	region Region, msg *larkim.EventMessage,
 	openID, chatID string, chatType im.ChatType, messageID string,
@@ -280,13 +279,37 @@ func convertPostEvent(
 		return nil
 	}
 
-	// Post content structure: {"title":"...", "content":[[{"tag":"text","text":"..."},{"tag":"img","image_key":"..."}]]}
-	var postContent struct {
+	result, _ := parsePostContent(region, *msg.Content, openID, chatID, chatType, messageID)
+	return result
+}
+
+func parsePostContent(region Region, rawContent, openID, chatID string, chatType im.ChatType, messageID string) (*im.IncomingMessage, error) {
+	type post struct {
 		Title   string              `json:"title"`
 		Content [][]json.RawMessage `json:"content"`
+		Files   []struct {
+			FileKey  string `json:"file_key"`
+			FileName string `json:"file_name"`
+			IsFolder bool   `json:"is_folder"`
+		} `json:"files"`
 	}
-	if err := json.Unmarshal([]byte(*msg.Content), &postContent); err != nil {
-		return nil
+	var postContent post
+	if err := json.Unmarshal([]byte(rawContent), &postContent); err != nil {
+		return nil, fmt.Errorf("unmarshal post content: %w", err)
+	}
+	if postContent.Content == nil && postContent.Files == nil {
+		var localized map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(rawContent), &localized); err != nil {
+			return nil, err
+		}
+		for _, locale := range []string{"zh_cn", "en_us", "ja_jp"} {
+			if localized[locale] != nil {
+				if err := json.Unmarshal(localized[locale], &postContent); err != nil {
+					return nil, fmt.Errorf("unmarshal localized post content: %w", err)
+				}
+				break
+			}
+		}
 	}
 
 	var textParts []string
@@ -335,15 +358,22 @@ func convertPostEvent(
 	}
 
 	content = strings.TrimSpace(content)
-	if content == "" && imageKey == "" {
-		return nil
-	}
-
 	messageType := im.MessageTypeText
-	fileName := ""
+	fileKey, fileName := imageKey, ""
 	if imageKey != "" {
 		messageType = im.MessageTypeImage
 		fileName = imageKey + ".png"
+	}
+	// IncomingMessage carries one attachment, so use the first non-folder file.
+	for _, file := range postContent.Files {
+		if !file.IsFolder && file.FileKey != "" {
+			messageType = im.MessageTypeFile
+			fileKey, fileName = file.FileKey, file.FileName
+			break
+		}
+	}
+	if content == "" && fileKey == "" {
+		return nil, nil
 	}
 
 	return &im.IncomingMessage{
@@ -354,9 +384,9 @@ func convertPostEvent(
 		ChatType:    chatType,
 		Content:     content,
 		MessageID:   messageID,
-		FileKey:     imageKey,
+		FileKey:     fileKey,
 		FileName:    fileName,
-	}
+	}, nil
 }
 
 // ptrStr safely dereferences a *string for logging; returns "" for nil so the
