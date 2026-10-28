@@ -120,3 +120,23 @@ func TestPostFileAttachments(t *testing.T) {
 		})
 	}
 }
+
+func TestPostHyperlinksPreserveDestination(t *testing.T) {
+	for _, tc := range []struct{ text, href, want string }{
+		{"这个视频", "https://youtu.be/abcdefghijk", "这个视频 (https://youtu.be/abcdefghijk)"},
+		{"", "https://youtu.be/abcdefghijk", "https://youtu.be/abcdefghijk"},
+		{"https://youtu.be/abcdefghijk", "https://youtu.be/abcdefghijk", "https://youtu.be/abcdefghijk"},
+	} {
+		raw, _ := json.Marshal(map[string]interface{}{"content": [][]map[string]string{{{"tag": "a", "text": tc.text, "href": tc.href}}}})
+		content := string(raw)
+		ws := convertPostEvent(RegionFeishu, &larkim.EventMessage{Content: &content}, "user", "chat", im.ChatTypeDirect, "message")
+		encoded, _ := json.Marshal(content)
+		body := `{"header":{"event_type":"im.message.receive_v1"},"event":{"sender":{"sender_id":{"open_id":"user"}},"message":{"message_type":"post","message_id":"message","chat_type":"p2p","chat_id":"chat","content":` + string(encoded) + `}}}`
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest("POST", "/", strings.NewReader(body))
+		hook, err := (&Adapter{region: RegionFeishu}).ParseCallback(ctx)
+		if err != nil || ws == nil || hook == nil || ws.Content != tc.want || hook.Content != tc.want {
+			t.Fatalf("ws=%+v hook=%+v err=%v want=%s", ws, hook, err, tc.want)
+		}
+	}
+}

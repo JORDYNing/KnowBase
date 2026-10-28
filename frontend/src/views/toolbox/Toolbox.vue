@@ -42,6 +42,7 @@
           <SkillSettings v-if="selectedItem.key === 'skills'" ref="panel" :key="sandboxId"
             :initial-sandbox-id="sandboxId" @count="counts.skills = $event" />
           <McpSettings v-else-if="selectedItem.key === 'mcp'" ref="panel" @count="counts.mcp = $event" />
+          <YouTubeTranscriptSettings v-else-if="selectedItem.key === 'youtube'" />
           <BrowserConnectionSettings v-else-if="selectedItem.key === 'browserconnection'" />
         </div>
       </section>
@@ -72,6 +73,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import SkillSettings from '@/views/settings/SkillSettings.vue'
 import McpSettings from '@/views/settings/McpSettings.vue'
 import BrowserConnectionSettings from '@/views/settings/BrowserConnectionSettings.vue'
+import YouTubeTranscriptSettings from '@/views/settings/YouTubeTranscriptSettings.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -113,6 +115,7 @@ watch([selectedItem, visibleItems], () => {
 const summaries: Record<ToolboxSection, () => Promise<void>> = {
   skills: async () => { counts.skills = (await listSkillCatalog())?.data?.length ?? 0 },
   mcp: async () => { counts.mcp = (await listMCPServices()).length },
+  youtube: async () => {},
   browserconnection: async () => { if (!browserConnection.loaded) await browserConnection.refresh() },
 }
 watch(() => visibleItems.value.map((item) => item.key), (keys, previous = []) => {

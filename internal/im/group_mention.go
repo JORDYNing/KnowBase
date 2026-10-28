@@ -18,6 +18,13 @@ func (s *Service) shouldIgnoreUnmentionedGroupMessage(ctx context.Context, msg *
 			return true, fmt.Errorf("resolve group agent: %w", err)
 		}
 		smart = agent != nil && agent.Config.AgentMode == types.AgentModeSmartReasoning
+		if !smart && agentAllowsYouTubeImport(agent) && len(imYouTubeURLs(msg.Content)) > 0 && s.tenantService != nil {
+			tenant, err := s.tenantService.GetTenantByID(ctx, channel.TenantID)
+			if err != nil {
+				return true, fmt.Errorf("resolve YouTube group configuration: %w", err)
+			}
+			smart = tenant != nil && tenant.YouTubeTranscriptConfig != nil && tenant.YouTubeTranscriptConfig.Enabled
+		}
 	}
 	if !smart {
 		return false, nil

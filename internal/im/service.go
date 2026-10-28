@@ -295,7 +295,10 @@ type Service struct {
 	agentService   interfaces.CustomAgentService
 
 	// knowledgeService is used for saving IM file messages to knowledge bases.
-	knowledgeService interfaces.KnowledgeService
+	knowledgeService     interfaces.KnowledgeService
+	youTubeImportService interfaces.YouTubeImportService
+	frontendBaseURL      string
+	youtubeBatchTimeout  time.Duration
 
 	// kbService is used by slash-commands (/info) to list and inspect knowledge bases.
 	kbService interfaces.KnowledgeBaseService
@@ -892,6 +895,10 @@ func NewService(
 		redis:            redisClient,
 		instanceID:       instanceID,
 		stopCh:           make(chan struct{}),
+	}
+
+	if appCfg != nil {
+		s.frontendBaseURL = appCfg.FrontendBaseURL
 	}
 
 	// Initialize the QA worker pool and bounded queue.
@@ -1993,6 +2000,12 @@ func (s *Service) executeQARequest(req *qaRequest) {
 			context.WithoutCancel(ctx), req.channel, downloaded,
 		)
 	}
+
+	// Deterministic imports share the normal queue, rate limit and cancellation.
+	if s.importYouTubeMessage(req) {
+		return
+	}
+	ctx = req.ctx
 
 	// Determine output mode from channel config.
 	streamDisabled := req.channel.OutputMode == "full"

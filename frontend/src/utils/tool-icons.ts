@@ -17,6 +17,7 @@ export const toolIcons: Record<string, string> = {
     query_knowledge_graph: '🕸️',
     think: '💭',
     todo_write: '📋',
+    youtube_transcript_import: '🎬',
     // Retired names (still present in stored chat history)
     knowledge_search: '📚',
     grep_chunks: '🔎',
@@ -67,6 +68,7 @@ const toolDisplayNameKeys: Record<string, string> = {
     query_knowledge_graph: 'tools.queryKnowledgeGraph',
     think: 'tools.think',
     todo_write: 'tools.todoWrite',
+    youtube_transcript_import: 'youtubeTranscript.title',
     // Retired names (still present in stored chat history)
     knowledge_search: 'tools.knowledgeSearch',
     grep_chunks: 'tools.grepChunks',

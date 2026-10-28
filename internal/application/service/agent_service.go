@@ -103,6 +103,7 @@ type agentService struct {
 	eventBus              *event.EventBus
 	db                    *gorm.DB
 	webSearchService      interfaces.WebSearchService
+	youtubeImportService  interfaces.YouTubeImportService
 	knowledgeBaseService  interfaces.KnowledgeBaseService
 	knowledgeService      interfaces.KnowledgeService
 	fileService           interfaces.FileService
@@ -153,6 +154,7 @@ func NewAgentService(
 	browserSkill *browserskill.Manager,
 	userRepo interfaces.UserRepository,
 	graphRepo interfaces.RetrieveGraphRepository,
+	youtubeImportService interfaces.YouTubeImportService,
 ) interfaces.AgentService {
 	svc := &agentService{
 		browserSkill:         browserSkill,
@@ -169,6 +171,7 @@ func NewAgentService(
 		eventBus:             eventBus,
 		db:                   db,
 		webSearchService:     webSearchService,
+		youtubeImportService: youtubeImportService,
 		duckdb:               duckdb,
 		wikiPageService:      wikiPageService,
 		tenantService:        tenantService,
@@ -1270,6 +1273,12 @@ func (s *agentService) registerTools(
 		case tools.ToolWebFetch:
 			toolToRegister = tools.NewWebFetchTool()
 			logger.Infof(ctx, "Registered web_fetch tool for session: %s", sessionID)
+
+		case tools.ToolYouTubeTranscriptImport:
+			if !s.youtubeImportAvailable(ctx) {
+				continue
+			}
+			toolToRegister = tools.NewYouTubeTranscriptImportTool(s.youtubeImportService)
 
 		case tools.ToolDataAnalysis:
 			toolToRegister = tools.NewDataAnalysisTool(s.knowledgeBaseService, s.knowledgeService, s.tenantService, s.fileService, s.duckdb, sessionID, s.storageResolver).

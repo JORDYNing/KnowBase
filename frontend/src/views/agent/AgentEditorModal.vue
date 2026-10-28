@@ -2477,6 +2477,7 @@ const allTools = computed(() => [
   // Wiki 巡检类
   { value: 'wiki_read_issue', label: t('agentEditor.tools.wikiReadIssue'), description: t('agentEditor.tools.wikiReadIssueDesc'), group: 'wiki_issue' },
   { value: 'wiki_update_issue', label: t('agentEditor.tools.wikiUpdateIssue'), description: t('agentEditor.tools.wikiUpdateIssueDesc'), group: 'wiki_issue' },
+  { value: 'youtube_transcript_import', label: t('youtubeTranscript.title'), description: t('youtubeTranscript.toolDescription'), group: 'import' },
   // 数据分析
   { value: 'data_analysis', label: t('agentEditor.tools.dataAnalysis'), description: t('agentEditor.tools.dataAnalysisDesc'), group: 'data' },
   { value: 'data_schema', label: t('agentEditor.tools.dataSchema'), description: t('agentEditor.tools.dataSchemaDesc'), group: 'data' },
@@ -2490,6 +2491,7 @@ const toolGroups = computed(() => [
   { key: 'wiki_edit', label: t('agentEditor.tools.groupWikiEdit') },
   { key: 'wiki_issue', label: t('agentEditor.tools.groupWikiIssue') },
   { key: 'data', label: t('agentEditor.tools.groupData') },
+  { key: 'import', label: t('youtubeTranscript.group') },
 ]);
 
 // 知识库分组：我的 vs 共享的

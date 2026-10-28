@@ -333,14 +333,24 @@ func parsePostContent(region Region, rawContent, openID, chatID string, chatType
 			var tag struct {
 				Tag      string `json:"tag"`
 				Text     string `json:"text"`
+				Href     string `json:"href"`
 				ImageKey string `json:"image_key"`
 			}
 			if err := json.Unmarshal(elem, &tag); err != nil {
 				continue
 			}
 			switch tag.Tag {
-			case "text", "a":
+			case "text":
 				lineText.WriteString(tag.Text)
+			case "a":
+				lineText.WriteString(tag.Text)
+				if href := strings.TrimSpace(tag.Href); href != "" && href != strings.TrimSpace(tag.Text) {
+					if strings.TrimSpace(tag.Text) != "" {
+						lineText.WriteString(" (" + href + ")")
+					} else {
+						lineText.WriteString(href)
+					}
+				}
 			case "img":
 				if imageKey == "" {
 					imageKey = tag.ImageKey

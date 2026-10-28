@@ -1306,7 +1306,7 @@ func (h *TenantHandler) GetTenantKV(c *gin.Context) {
 	key := secutils.SanitizeForLog(c.Param("key"))
 
 	switch key {
-	case "web-search-config", "parser-engine-config", "storage-engine-config":
+	case "web-search-config", "parser-engine-config", "storage-engine-config", "youtube-transcript-config":
 		if !dto.CanViewIntegrationSecrets(ctx) {
 			c.Error(errors.NewForbiddenError("integration configuration requires admin access"))
 			return
@@ -1314,6 +1314,9 @@ func (h *TenantHandler) GetTenantKV(c *gin.Context) {
 	}
 
 	switch key {
+	case "youtube-transcript-config":
+		h.getYouTubeTranscriptConfig(c)
+		return
 	case "web-search-config":
 		h.GetTenantWebSearchConfig(c)
 		return
@@ -1360,7 +1363,7 @@ func (h *TenantHandler) UpdateTenantKV(c *gin.Context) {
 	key := secutils.SanitizeForLog(c.Param("key"))
 
 	switch key {
-	case "web-search-config", "parser-engine-config", "storage-engine-config":
+	case "web-search-config", "parser-engine-config", "storage-engine-config", "youtube-transcript-config":
 		if !dto.CanViewIntegrationSecrets(ctx) {
 			c.Error(errors.NewForbiddenError("integration configuration requires admin access"))
 			return
@@ -1368,6 +1371,9 @@ func (h *TenantHandler) UpdateTenantKV(c *gin.Context) {
 	}
 
 	switch key {
+	case "youtube-transcript-config":
+		h.updateYouTubeTranscriptConfig(c)
+		return
 	case "web-search-config":
 		h.updateTenantWebSearchConfigInternal(c)
 		return
