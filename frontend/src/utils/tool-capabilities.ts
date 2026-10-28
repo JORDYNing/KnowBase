@@ -53,6 +53,8 @@ export const TOOL_CAPABILITY_REQUIREMENTS: Record<string, ToolRequirement> = {
   // ---- base / reasoning (no KB dependency) ----
   thinking: {},
   todo_write: {},
+  // The destination comes from workspace tool settings, not retrieval scope.
+  youtube_transcript_import: { consumesFiles: false },
 
   // ---- RAG / chunk retrieval (need at least one chunk-indexed KB) ----
   // We use vector|keyword as the canonical "has RAG chunks" signal. FAQ KBs

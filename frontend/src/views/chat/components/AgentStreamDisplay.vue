@@ -738,6 +738,7 @@ const TOOL_NAME_KEYS: Record<string, string> = {
   grep_chunks: 'agentStream.tools.grepChunks',
   web_search: 'agentStream.tools.webSearch',
   web_fetch: 'agentStream.tools.webFetch',
+  youtube_transcript_import: 'youtubeTranscript.title',
   get_document_info: 'agentStream.tools.getDocumentInfo',
   list_knowledge_chunks: 'agentStream.tools.listKnowledgeChunks',
   get_related_documents: 'agentStream.tools.getRelatedDocuments',
@@ -1196,6 +1197,7 @@ const resolveToolDisplayType = (event: any): DisplayType | undefined => {
   const mcpType = getMcpToolDisplayType(event?.tool_name)
   if (mcpType) return mcpType
   if (event?.display_type) return event.display_type as DisplayType
+  if (event?.tool_name === 'youtube_transcript_import' && event?.success !== false) return 'youtube_transcript_import'
   if (event?.tool_name === 'shell_exec' || event?.tool_name === 'execute_skill_script') {
     return 'shell_exec'
   }

@@ -42,6 +42,8 @@ const (
 	// 600-second command timeout so the tool can return a structured timeout
 	// result instead of being cancelled first by the generic agent wrapper.
 	shellExecToolTimeout = 10*time.Minute + 5*time.Second
+	// Allow caption import plus the bounded summary-generation wait.
+	youtubeImportToolTimeout = 30*time.Minute + 155*time.Second
 
 	// maxLLMRetries is the maximum number of retries for transient LLM errors.
 	maxLLMRetries = 2
@@ -93,6 +95,9 @@ func toolExecutionTimeout(toolName string, arguments ...string) time.Duration {
 	}
 	if toolName == "shell_exec" {
 		return shellExecToolTimeout
+	}
+	if toolName == "youtube_transcript_import" {
+		return youtubeImportToolTimeout
 	}
 	return defaultToolExecTimeout
 }

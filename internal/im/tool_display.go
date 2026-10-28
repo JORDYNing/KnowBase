@@ -29,36 +29,37 @@ func imLocalizedToolName(toolName string) string {
 }
 
 var imToolNameLabels = map[string]string{
-	"search_knowledge":        "知识库检索",
-	"knowledge_search":        "知识库检索",
-	"grep_chunks":             "搜索关键词",
-	"read_document":           "阅读文档",
-	"list_documents":          "浏览文档列表",
-	"web_search":              "网络搜索",
-	"web_fetch":               "网页抓取",
-	"get_document_info":       "获取文档信息",
-	"list_knowledge_chunks":   "查看知识分块",
-	"get_related_documents":   "查找相关文档",
-	"get_document_content":    "获取文档内容",
-	"wiki_search":             "Wiki 搜索",
-	"wiki_read_page":          "Wiki 阅读",
-	"wiki_read_source_doc":    "精读源文档",
-	"todo_write":              "计划管理",
-	"knowledge_graph_extract": "知识图谱抽取",
-	"thinking":                "思考",
-	"image_analysis":          "查看图片内容",
-	"query_understand":        "理解问题",
-	"query_knowledge_graph":   "知识图谱查询",
-	"read_skill":              "读取技能",
-	"execute_skill_script":    "执行技能脚本",
-	"list_sandbox_files":      "列出沙箱文件",
-	"read_sandbox_file":       "读取沙箱文件",
-	"write_sandbox_file":      "写入沙箱文件",
-	"edit_sandbox_file":       "编辑沙箱文件",
-	"shell_exec":              "执行沙箱命令",
-	"data_analysis":           "数据分析",
-	"data_schema":             "数据结构",
-	"database_query":          "数据库查询",
+	"search_knowledge":          "知识库检索",
+	"knowledge_search":          "知识库检索",
+	"grep_chunks":               "搜索关键词",
+	"read_document":             "阅读文档",
+	"list_documents":            "浏览文档列表",
+	"web_search":                "网络搜索",
+	"web_fetch":                 "网页抓取",
+	"youtube_transcript_import": "YouTube 字幕入库",
+	"get_document_info":         "获取文档信息",
+	"list_knowledge_chunks":     "查看知识分块",
+	"get_related_documents":     "查找相关文档",
+	"get_document_content":      "获取文档内容",
+	"wiki_search":               "Wiki 搜索",
+	"wiki_read_page":            "Wiki 阅读",
+	"wiki_read_source_doc":      "精读源文档",
+	"todo_write":                "计划管理",
+	"knowledge_graph_extract":   "知识图谱抽取",
+	"thinking":                  "思考",
+	"image_analysis":            "查看图片内容",
+	"query_understand":          "理解问题",
+	"query_knowledge_graph":     "知识图谱查询",
+	"read_skill":                "读取技能",
+	"execute_skill_script":      "执行技能脚本",
+	"list_sandbox_files":        "列出沙箱文件",
+	"read_sandbox_file":         "读取沙箱文件",
+	"write_sandbox_file":        "写入沙箱文件",
+	"edit_sandbox_file":         "编辑沙箱文件",
+	"shell_exec":                "执行沙箱命令",
+	"data_analysis":             "数据分析",
+	"data_schema":               "数据结构",
+	"database_query":            "数据库查询",
 }
 
 func formatMCPToolName(rawName string) string {
@@ -364,6 +365,8 @@ func imSandboxDiffStat(step IMToolStep) string {
 func imAgentToolTitle(step IMToolStep) string {
 	if step.Pending {
 		switch step.ToolName {
+		case "youtube_transcript_import":
+			return "正在获取 YouTube 字幕并保存..."
 		case "image_analysis":
 			return "正在查看图片内容..."
 		case "wiki_search", "wiki_read_page":
@@ -428,6 +431,11 @@ func imToolStatusDescription(step IMToolStep) string {
 	toolName := step.ToolName
 
 	switch toolName {
+	case "youtube_transcript_import":
+		if success {
+			return "YouTube 字幕已保存"
+		}
+		return "YouTube 字幕入库失败"
 	case "search_knowledge", "knowledge_search":
 		if success {
 			return "检索知识库"

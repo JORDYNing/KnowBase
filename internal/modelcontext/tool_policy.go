@@ -127,6 +127,10 @@ var toolHandlePolicies = map[string]toolHandlePolicy{
 		sourceIDKeys: map[string]struct{}{"url": {}, "urls": {}},
 		sourceOutput: true,
 	},
+	"youtube_transcript_import": {
+		sourceIDKeys: map[string]struct{}{"url": {}},
+		sourceOutput: true,
+	},
 	"web_search": {
 		sourceOutput: true,
 	},

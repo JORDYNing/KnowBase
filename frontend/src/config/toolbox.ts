@@ -19,6 +19,12 @@ export const TOOLBOX_ITEMS = [
     action: 'mcpSettings.addService',
   },
   {
+    key: 'youtube',
+    icon: 'video',
+    title: 'youtubeTranscript.title',
+    description: 'youtubeTranscript.description',
+  },
+  {
     key: 'browserconnection',
     title: 'localBrowser.settingsTitle',
     description: 'localBrowser.settingsDescription',

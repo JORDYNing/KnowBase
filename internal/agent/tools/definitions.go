@@ -15,17 +15,18 @@ const (
 	// and hybrid retrieval over chunk-indexed knowledge bases; read_document
 	// reads a document's metadata and chunks (by page, by chunk handle, or by
 	// an in-document text search); list_documents browses one knowledge base.
-	ToolSearchKnowledge     = "search_knowledge"
-	ToolReadDocument        = "read_document"
-	ToolListDocuments       = "list_documents"
-	ToolQueryKnowledgeGraph = "query_knowledge_graph"
-	ToolSearchConversations = "search_conversations"
-	ToolSearchMemory        = "search_memory"
-	ToolDatabaseQuery       = "database_query"
-	ToolDataAnalysis        = "data_analysis"
-	ToolDataSchema          = "data_schema"
-	ToolWebSearch           = "web_search"
-	ToolWebFetch            = "web_fetch"
+	ToolSearchKnowledge         = "search_knowledge"
+	ToolReadDocument            = "read_document"
+	ToolListDocuments           = "list_documents"
+	ToolQueryKnowledgeGraph     = "query_knowledge_graph"
+	ToolSearchConversations     = "search_conversations"
+	ToolSearchMemory            = "search_memory"
+	ToolDatabaseQuery           = "database_query"
+	ToolDataAnalysis            = "data_analysis"
+	ToolDataSchema              = "data_schema"
+	ToolWebSearch               = "web_search"
+	ToolWebFetch                = "web_fetch"
+	ToolYouTubeTranscriptImport = "youtube_transcript_import"
 	// Unified reading: workspace access follows sandbox file capability;
 	// skill resources follow SkillsEnabled and do not require a sandbox.
 	ToolReadFile = "read_file"
@@ -100,6 +101,7 @@ func AvailableToolDefinitions() []AvailableTool {
 		{Name: ToolDatabaseQuery, Label: "查询数据库", Description: "查询数据库中的信息"},
 		{Name: ToolDataAnalysis, Label: "数据分析", Description: "理解数据文件并进行数据分析"},
 		{Name: ToolDataSchema, Label: "查看数据元信息", Description: "获取表格文件的元信息"},
+		{Name: ToolYouTubeTranscriptImport, Label: "YouTube 字幕入库", Description: "优先获取中文字幕，连同原视频信息保存为 Markdown 到指定知识库；支持指定语言"},
 		{Name: ToolWikiReadPage, Label: "读取Wiki页面", Description: "读取指定的Wiki页面内容"},
 		{Name: ToolWikiSearch, Label: "搜索Wiki", Description: "在Wiki中搜索页面"},
 		{Name: ToolWikiFlagIssue, Label: "标记Wiki问题", Description: "标记页面中存在的事实错误或合并冲突问题"},

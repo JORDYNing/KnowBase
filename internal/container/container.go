@@ -240,6 +240,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewKBShareService)) // KBShareService must be registered before KnowledgeService and KnowledgeTagService
 	must(container.Provide(service.NewAgentShareService))
 	must(container.Provide(service.NewKnowledgeService))
+	must(container.Provide(service.NewYouTubeImportService))
 	must(container.Provide(service.NewSpanTracker))
 	must(container.Provide(service.NewChunkService))
 	must(container.Provide(service.NewKnowledgeTagService))
@@ -1815,7 +1816,8 @@ func registerWebSearchProviders(registry *infra_web_search.Registry) {
 // registerIMService registers adapter factories, loads enabled channels, and
 // wires the process-lifetime shutdown hook. Each platform's factory lives in
 // its own subpackage to keep this file focused on wiring.
-func registerIMService(imService *imPkg.Service, cleaner interfaces.ResourceCleaner) {
+func registerIMService(imService *imPkg.Service, cleaner interfaces.ResourceCleaner, youtubeImport interfaces.YouTubeImportService) {
+	imService.WithYouTubeImportService(youtubeImport)
 	imService.RegisterAdapterFactory("wecom", wecom.NewFactory())
 	imService.RegisterAdapterFactory("feishu", feishu.NewFactory(feishu.RegionFeishu))
 	// Lark is Feishu's international cloud: same adapter, different host/tenant.

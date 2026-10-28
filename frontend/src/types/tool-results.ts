@@ -20,6 +20,7 @@ export type DisplayType =
     | 'database_query'
     | 'web_search_results'
     | 'web_fetch_results'
+    | 'youtube_transcript_import'
     | 'grep_results'
     | 'knowledge_chunks_list'
     | 'wiki_write_page'
@@ -465,6 +466,7 @@ export type ToolResultData =
     | DatabaseQueryData
     | WebSearchResultsData
     | WebFetchResultsData
+    | YouTubeTranscriptData
     | GrepResultsData
     | KnowledgeChunksListData
     | WikiWritePageData
@@ -486,4 +488,18 @@ export interface ActionData {
     details?: boolean;
     display_type?: DisplayType;
     tool_data?: Record<string, any>;
+}
+
+export interface YouTubeTranscriptData {
+    display_type?: 'youtube_transcript_import';
+    video_id?: string;
+    title?: string;
+    url?: string;
+    language?: string;
+    knowledge_id?: string;
+    knowledge_base_id?: string;
+    knowledge_base_name?: string;
+    document_url?: string;
+    status?: string;
+    already_exists?: boolean;
 }

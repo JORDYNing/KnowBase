@@ -102,6 +102,8 @@ type Tenant struct {
 	StorageUsed int64 `yaml:"storage_used"        json:"storage_used"        gorm:"default:0"`
 	// Global Context configuration for this workspace (default for all sessions)
 	ContextConfig *ContextConfig `yaml:"context_config"      json:"context_config"      gorm:"type:jsonb"`
+	// YouTube transcript import destination and network configuration.
+	YouTubeTranscriptConfig *YouTubeTranscriptConfig `yaml:"youtube_transcript_config" json:"-" gorm:"column:youtube_transcript_config;type:jsonb"`
 	// Global WebSearch configuration for this workspace
 	WebSearchConfig *WebSearchConfig `yaml:"web_search_config"   json:"web_search_config"   gorm:"type:jsonb"`
 	// Parser engine config overrides (MinerU endpoint, API key, etc.). Used when parsing documents; overrides env.
