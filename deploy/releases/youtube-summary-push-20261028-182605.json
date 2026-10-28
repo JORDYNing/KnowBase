@@ -1,0 +1,134 @@
+{
+  "release": "youtube-summary-push-20261028-182605",
+  "checked_at": "2026-10-28T18:33:34.702341+08:00",
+  "deployment_scope": [
+    "app"
+  ],
+  "change": "Automatically generate the video summary after transcript import; emit metadata progress and deliver the completed summary in the originating web conversation or IM channel.",
+  "backup_directory": "/opt/knowbase-backups/youtube-summary-push-20261028-182605",
+  "release_directory": "/opt/knowbase-releases/youtube-summary-push-20261028-182605",
+  "database_operation": "app_only_no_schema_change",
+  "preserved_counts": {
+    "users": 3,
+    "knowledge_bases": 8,
+    "knowledges": 54
+  },
+  "build": {
+    "platform": "linux/amd64",
+    "runtime_base": "knowbase/app:youtube-retry-fix-20261028-104328",
+    "cached_builder": "knowbase/im-cached-builder:20261022",
+    "anydoc_enabled": true,
+    "binary_sha256": "692c27d2a57e4f3d6e26638776818b8104fbdce1cae76753e3735b02cfc63963",
+    "binary_transport_sha256": "6a62f1c999385b19fb020a8d8fa202027a1c050adcc687279f6758f6f11d5c2b",
+    "server_image_id": "sha256:18b2e10fd3aacee2228998e0f7a0fad628026bbe746a9ec26b01f5e45aecf831",
+    "recipe_sha256": "9e175a86a1879b6415d9655ea601576fb90f18a725d42bb0c002fb3d581aebbe",
+    "server_recipe_sha256": "d60a248aaafbdc26d904f70c6619b720bbdfd962853d5903e70fe11a38c07363",
+    "recipe": "Compile frozen live server source with anydoc in audited amd64 builder; run service/tool/IM/type summary-flow regression tests; replace only application binary on the current runtime."
+  },
+  "checks": {
+    "six_services_healthy": true,
+    "schema_version": 118,
+    "schema_dirty": false,
+    "database_counts_preserved": true,
+    "environment_unchanged": true,
+    "other_five_container_identities_unchanged": true,
+    "feishu_configuration_unchanged": true,
+    "database_and_file_backups_verified": true,
+    "data_disk_mounts_verified": true,
+    "source_patch_verified": true,
+    "binary_sha256": "692c27d2a57e4f3d6e26638776818b8104fbdce1cae76753e3735b02cfc63963",
+    "website_http": 200,
+    "index_sha256": "76022c35404869615ac9f0865db419db746ec1f78bfe39566d088d35b821d12c",
+    "frontend_unchanged": true,
+    "youtube_configuration_preserved": true,
+    "target_knowledge_base_name": "YouTube 视频库",
+    "youtube_import_enabled": true,
+    "configuration_request_statuses": [],
+    "youtube_summary_flow_regressions_passed": true,
+    "proxy_no_host_ports": true,
+    "proxy_logs_disabled": true,
+    "website_assets_http": {
+      "/assets/auth-D-XQD-fE.js": 200,
+      "/assets/files-DSyvmYgC.js": 200,
+      "/assets/index-B5IZhFZ6.js": 200,
+      "/assets/main-D-z9ubBR.css": 200,
+      "/assets/main-Mtc8tiSO.js": 200,
+      "/assets/tdesign-icon-offline-BiHQl_bL.js": 200,
+      "/assets/tdesign-icon-offline-yKebODVR.css": 200,
+      "/assets/ui-CHWcNGPr.js": 200,
+      "/assets/vendor-highlight-BiJVEjr2.css": 200,
+      "/assets/vendor-highlight-Dcan1wjf.js": 200,
+      "/assets/vendor-markdown-C25eB2S-.js": 200,
+      "/assets/vendor-markdown-CfVKi3_s.css": 200,
+      "/assets/vendor-mermaid-CEv6LIl8.js": 200,
+      "/config.js": 200,
+      "/tdesign-icons/0.4.1/fonts/index.js": 200
+    },
+    "password_login_http": 403,
+    "startup_panic": false,
+    "feishu_connection_established": true,
+    "real_im_push_tested": false,
+    "authenticated_web_flow_tested": false
+  },
+  "limitations": [
+    "Real web conversation and IM summary delivery were not exercised end to end; no test message was sent to users or groups."
+  ],
+  "github": {
+    "pull_request": "https://github.com/JORDYNing/KnowBase/pull/3",
+    "source_commit": "f94e8b99c9c2d6a475d58b4d57bd3c3e250c8003",
+    "server_source_note": "Server retains its existing module path and permission API; GitHub changes are adapted to main. Frozen deployed source is identified by the release manifest."
+  },
+  "source_snapshot": {
+    "docs_supplement_sha256": "d3a535f8680442d60fd9401dadf184242b309797ff0510a6c882a07a1dda8b3a",
+    "base": "Fresh live server source; nine scoped YouTube summary-flow files; unchanged generated docreader client supplement",
+    "changed_paths": [
+      {
+        "path": "internal/application/service/youtube_import.go",
+        "before": "49206f7bc299b5bf16be588c84484369b989116b3c0721eea98c5451a41ba461",
+        "after": "06abdd596d61dba15338ca5da382bb79f96f374547aad26967c1b86e7fde49b7"
+      },
+      {
+        "path": "internal/application/service/youtube_import_test.go",
+        "before": "5a5e17aaa3ba81fc521850973a13e3cb4330b9e46a7599e295820ebc16fbf98f",
+        "after": "975460fe413dcc4e12f8c1cc15d426014a273b6b2e690911d41e8335a4a53864"
+      },
+      {
+        "path": "internal/agent/tools/youtube_transcript.go",
+        "before": "5dbfc30124a9b21e62df0c54bb1bb11191de83fea6860a36cfb4e2792d0d448a",
+        "after": "ae54fd94bc57c6f8a5cfc904711ee69f50c3a15f8ac7959de594ef702bf84b14"
+      },
+      {
+        "path": "internal/agent/tools/youtube_transcript_test.go",
+        "before": "4a33cae28269606ee71d0b4cef3b83d20b5ed9b94b3c69554473a31519dd27f9",
+        "after": "9cb47661edea4952b81d2005d8e1da84550fe7eea1d6ecbe1de4c68d51c4cd19"
+      },
+      {
+        "path": "internal/types/youtube_context.go",
+        "before": "e206d8baa0d489adedafa7eb45ece7ef532acac0fa7e50b5e3c3299d9c32dcfe",
+        "after": "cacb3911e2e4380088e5ba5b1f484103b39d017ab507afbeb90a300d225dfd19"
+      },
+      {
+        "path": "internal/im/youtube_import.go",
+        "before": "7673bc5f306ce9d53bdbe24309400e67d18e4b339b23ff3f4f13adf824f38077",
+        "after": "037ea39acf1f5d02787267923c363127d3234adfe83c26a4850ecb4be7fa6ce5"
+      },
+      {
+        "path": "internal/types/youtube.go",
+        "before": "4fac2ed59ab79d3e77d6cdd56b7d163bca0cf81579f6ae72aeb324719b1c088d",
+        "after": "cb0fb5d0016f3eb807d5956424c6f912dbb4479d1eb08d9548b3cc613d3950df"
+      },
+      {
+        "path": "internal/agent/const.go",
+        "before": "b74c39fbd161d56215162cc43e39ca7e5cebf019d776327765fa78c62330745f",
+        "after": "afc1bb26d571577d5175044491eb220a7b94c41320128cee16f97467d426ab5e"
+      },
+      {
+        "path": "internal/agent/const_test.go",
+        "before": "8598fc4a3f9b4932d0522c52b8581a6825a72b13feb8e81bd00d49537f7af615",
+        "after": "c30854901858194cd018a09759d3ce18526c9ebb0c169879f3aacdb921beda10"
+      }
+    ],
+    "server_archive_sha256": "576afec6c56fd7fbe59c0b7592e515f6676be3e156d51aca93ba6d5caa9a2192",
+    "patch_archive_sha256": "cff0d1ce7bcf4572e0ce8483d5761377ce501ca3a9d9ce2eeedd35da92579734"
+  }
+}
