@@ -759,6 +759,11 @@ type E2BSandboxConfig struct {
 type DockerSandboxConfig struct {
 	Image string `json:"image,omitempty"`
 
+	// MaxConcurrentTurns caps chat turns using this config within one app
+	// process. Zero preserves unrestricted operation. This is intended for
+	// single-instance deployments; it is not a distributed quota.
+	MaxConcurrentTurns int `json:"max_concurrent_turns,omitempty"`
+
 	// Host is the daemon endpoint in DOCKER_HOST form. Empty means the local
 	// unix socket.
 	Host string `json:"host,omitempty"`

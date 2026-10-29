@@ -28,8 +28,9 @@
 // Two Docker facts shape the rest of this file:
 //
 //   - Cancelling an exec client-side does NOT stop the process inside the
-//     container. Every exec is therefore wrapped in the container's own
-//     timeout(1), which is the only thing that actually kills a runaway script.
+//     container. Each exec has a unique inherited marker for targeted
+//     cancellation, plus an in-container timeout as a transport-independent
+//     upper bound.
 //   - The daemon has no idle timeout. Each exec refreshes an activity marker
 //     file (for free, inside the same wrapper) that dockerIdleSweeper reads to
 //     decide what to reclaim.
@@ -48,6 +49,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
@@ -653,10 +655,10 @@ func (c *DockerRemoteClient) removeQuietly(ctx context.Context, id string) {
 
 // Exec runs one command inside the sandbox.
 //
-// The command is wrapped so that the container, not the client, enforces the
-// timeout: cancelling the HTTP request leaves the process running (verified in
-// docs/poc/docker-sandbox), which would let a runaway script keep burning the
-// host's CPU long after WeKnora reported a timeout to the user.
+// The container enforces the execution timeout. Cancellation additionally
+// runs a separately bounded cleanup exec that terminates only this execution's
+// tagged processes and process groups; closing a Docker stream alone cannot
+// stop them.
 func (c *DockerRemoteClient) Exec(
 	ctx context.Context,
 	handle RemoteSandboxHandle,
@@ -672,6 +674,8 @@ func (c *DockerRemoteClient) Exec(
 	if strings.TrimSpace(req.Command) == "" {
 		return nil, dockerInvalidRequest("Exec", "command is required")
 	}
+	releaseActivity := holdDockerExecActivity(c.settings.Endpoint.key(), id)
+	defer releaseActivity()
 
 	timeout := req.Timeout
 	if timeout <= 0 {
@@ -683,11 +687,17 @@ func (c *DockerRemoteClient) Exec(
 	execCtx, cancel := context.WithTimeout(ctx, timeout+dockerExecGrace)
 	defer cancel()
 
+	executionID := dockerTerminalToken()
+	envs := make(map[string]string, len(req.Env)+1)
+	for key, value := range req.Env {
+		envs[key] = value
+	}
+	envs[dockerExecIDEnv] = executionID
 	execOpts := client.ExecCreateOptions{
 		Cmd:          dockerExecCommand(req, timeout),
 		User:         dockerExecUser(req.User),
 		WorkingDir:   req.WorkDir,
-		Env:          dockerEnvSlice(req.Env),
+		Env:          dockerEnvSlice(envs),
 		AttachStdin:  req.Stdin != "",
 		AttachStdout: true,
 		AttachStderr: true,
@@ -704,6 +714,13 @@ func (c *DockerRemoteClient) Exec(
 	}
 
 	start := time.Now()
+	// Run before deferred cancel so successful executions need no cleanup.
+	// Attach can start the process even when its response races cancellation.
+	defer func() {
+		if execCtx.Err() != nil {
+			c.terminateExec(execCtx, id, executionID, execOpts.User)
+		}
+	}()
 	stdout, stderr, err := c.streamExec(execCtx, created.ID, req.Stdin, req.OnOutput)
 	if err != nil {
 		return nil, err
@@ -730,6 +747,74 @@ func (c *DockerRemoteClient) Exec(
 // teardown so a script killed at the deadline is still reported as Killed
 // instead of surfacing as a transport timeout.
 const dockerExecGrace = 10 * time.Second
+
+const dockerExecIDEnv = "WEKNORA_EXEC_ID"
+
+// terminateExec cannot reuse the cancelled execution context. Its bounded
+// detached context lets both user cancellation and deadline expiry terminate
+// the process inside the container without affecting another concurrent exec.
+func (c *DockerRemoteClient) terminateExec(ctx context.Context, containerID, executionID, user string) {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	created, err := c.api.ExecCreate(cleanupCtx, containerID, client.ExecCreateOptions{
+		Cmd: dockerExecKillCommand(executionID), User: user,
+	})
+	if err == nil {
+		_, err = c.api.ExecStart(cleanupCtx, created.ID, client.ExecStartOptions{Detach: true})
+	}
+	if err == nil {
+		for {
+			var inspected client.ExecInspectResult
+			inspected, err = c.api.ExecInspect(cleanupCtx, created.ID, client.ExecInspectOptions{})
+			if err != nil || !inspected.Running {
+				break
+			}
+			select {
+			case <-cleanupCtx.Done():
+				err = cleanupCtx.Err()
+			case <-time.After(50 * time.Millisecond):
+				continue
+			}
+			break
+		}
+	}
+	if err != nil {
+		logger.Warnf(cleanupCtx, "[sandbox] cancelled Docker exec cleanup failed container=%s: %v", containerID, err)
+	}
+}
+
+func dockerExecKillCommand(executionID string) []string {
+	// A whole environment entry identifies an execution. timeout creates its
+	// own process group; only signal that group if its leader is still tagged.
+	// This also catches children that cleared their inherited environment.
+	script := `marker="` + dockerExecIDEnv + `=$1"
+tagged() {
+local e
+e=$(tr '\0' '\n' < "/proc/$1/environ" 2>/dev/null) || return 1
+case "
+$e
+" in *"
+$marker
+"*) return 0 ;; *) return 1 ;; esac
+}
+for attempt in 1 2 3; do
+for d in /proc/[0-9]*; do
+p=${d#/proc/}
+tagged "$p" || continue
+s=$(cat "$d/stat" 2>/dev/null) || continue
+set -- ${s##*) }
+g=$3
+if [ "$g" -gt 1 ] 2>/dev/null && tagged "$g"; then
+kill -KILL -- "-$g" 2>/dev/null || true
+fi
+kill -KILL -- "$p" 2>/dev/null || true
+done
+sleep 0.05
+done
+touch ` + dockerActivityMarker + ` 2>/dev/null || true
+exit 0`
+	return []string{"/bin/bash", "--noprofile", "--norc", "-c", script, "weknora-exec-cancel", executionID}
+}
 
 // streamExec starts the exec, writes stdin, and demultiplexes the output.
 func (c *DockerRemoteClient) streamExec(
@@ -811,16 +896,17 @@ func dockerExecCommand(req RemoteExecRequest, timeout time.Duration) []string {
 		seconds = "1"
 	}
 	touch := "touch " + dockerActivityMarker + " 2>/dev/null || true; "
+	finish := `; status=$?; ` + touch + `exit "$status"`
 	if req.Shell {
 		return []string{
 			"/bin/sh", "-c",
-			touch + `exec timeout -s KILL ` + seconds + ` /bin/bash --noprofile --norc -c "$1"`,
+			touch + `timeout -s KILL ` + seconds + ` /bin/bash --noprofile --norc -c "$1"` + finish,
 			"weknora-exec", req.Command,
 		}
 	}
 	argv := []string{
 		"/bin/sh", "-c",
-		touch + `exec timeout -s KILL ` + seconds + ` "$@"`,
+		touch + `timeout -s KILL ` + seconds + ` "$@"` + finish,
 		"weknora-exec", req.Command,
 	}
 	return append(argv, req.Args...)
