@@ -53,6 +53,31 @@ var dockerSweepThrottle = struct {
 	last map[string]time.Time
 }{last: make(map[string]time.Time)}
 
+// Long commands are active work even when the marker has not been refreshed
+// for an entire TTL. Keep the periodic sweeper from reclaiming that container.
+var dockerExecActivity = struct {
+	sync.Mutex
+	refs map[string]int
+}{refs: make(map[string]int)}
+
+func holdDockerExecActivity(endpoint, containerID string) func() {
+	key := endpoint + "\x00" + containerID
+	dockerExecActivity.Lock()
+	dockerExecActivity.refs[key]++
+	dockerExecActivity.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			dockerExecActivity.Lock()
+			defer dockerExecActivity.Unlock()
+			dockerExecActivity.refs[key]--
+			if dockerExecActivity.refs[key] <= 0 {
+				delete(dockerExecActivity.refs, key)
+			}
+		})
+	}
+}
+
 // dockerIdleSweeper reclaims containers that have not executed anything for
 // longer than their TTL.
 type dockerIdleSweeper struct {
@@ -75,6 +100,7 @@ func (s *dockerIdleSweeper) trigger(ctx context.Context) {
 	if s == nil || s.client == nil {
 		return
 	}
+	s.ensurePeriodicSweep()
 	if !s.claimSweep() {
 		return
 	}
@@ -92,6 +118,101 @@ func (s *dockerIdleSweeper) trigger(ctx context.Context) {
 			log.Printf("[sandbox] docker idle sweep reclaimed %d container(s)", reclaimed)
 		}
 	}()
+}
+
+// Actual daemon clients get one recurring worker per endpoint. Request-time
+// manager construction must not create one ticker per session. Fake clients
+// remain synchronous unless a test explicitly starts a worker.
+func (s *dockerIdleSweeper) ensurePeriodicSweep() {
+	api := s.client.api
+	for {
+		wrapped, ok := api.(*dockerRPCTimeoutAPI)
+		if !ok {
+			break
+		}
+		api = wrapped.inner
+	}
+	if _, ok := api.(*client.Client); !ok {
+		return
+	}
+	failures := 0
+	dockerPeriodicSweeps.start(context.Background(), s.client.settings.Endpoint.key(), dockerSweepMinInterval, func(ctx context.Context) bool {
+		if !DockerBackendEnabled() {
+			return false
+		}
+		sweepCtx, cancel := context.WithTimeout(ctx, dockerSweepBudget)
+		defer cancel()
+		if reclaimed, err := s.sweep(sweepCtx); err != nil {
+			failures++
+			log.Printf("[sandbox] periodic docker idle sweep failed: %v", err)
+			// A removed daemon endpoint must not keep a worker forever. A new
+			// request can register it again after connectivity is restored.
+			return failures < 5
+		} else if reclaimed > 0 {
+			log.Printf("[sandbox] periodic docker idle sweep reclaimed %d container(s)", reclaimed)
+		}
+		failures = 0
+		remaining, err := s.client.List(sweepCtx, RemoteListFilter{})
+		return err != nil || len(remaining) != 0
+	})
+}
+
+type dockerPeriodicSweepWorker struct {
+	run     func(context.Context) bool
+	done    chan struct{}
+	version uint64
+}
+
+type dockerPeriodicSweepRegistry struct {
+	mu      sync.Mutex
+	workers map[string]*dockerPeriodicSweepWorker
+}
+
+var dockerPeriodicSweeps = dockerPeriodicSweepRegistry{workers: make(map[string]*dockerPeriodicSweepWorker)}
+
+func (r *dockerPeriodicSweepRegistry) start(ctx context.Context, key string, interval time.Duration, run func(context.Context) bool) *dockerPeriodicSweepWorker {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if existing := r.workers[key]; existing != nil {
+		existing.run = run
+		existing.version++
+		return existing
+	}
+	w := &dockerPeriodicSweepWorker{run: run, done: make(chan struct{}), version: 1}
+	r.workers[key] = w
+	go func() {
+		defer func() {
+			r.mu.Lock()
+			if r.workers[key] == w {
+				delete(r.workers, key)
+			}
+			r.mu.Unlock()
+			close(w.done)
+		}()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				r.mu.Lock()
+				fn := w.run
+				version := w.version
+				r.mu.Unlock()
+				if !fn(ctx) {
+					r.mu.Lock()
+					if version == w.version {
+						delete(r.workers, key)
+						r.mu.Unlock()
+						return
+					}
+					r.mu.Unlock()
+				}
+			}
+		}
+	}()
+	return w
 }
 
 // claimSweep reports whether this caller won the right to sweep now.
@@ -146,6 +267,12 @@ func (s *dockerIdleSweeper) sweep(ctx context.Context) (int, error) {
 // isIdle decides whether one container has gone unused for longer than the
 // TTL it was created with.
 func (s *dockerIdleSweeper) isIdle(ctx context.Context, summary RemoteSandboxSummary) bool {
+	dockerExecActivity.Lock()
+	active := dockerExecActivity.refs[s.client.settings.Endpoint.key()+"\x00"+summary.ID] > 0
+	dockerExecActivity.Unlock()
+	if active {
+		return false
+	}
 	ttl := s.ttlFor(summary)
 	if ttl <= 0 {
 		return false

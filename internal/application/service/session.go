@@ -5,6 +5,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
@@ -1028,11 +1029,24 @@ func (s *sessionService) GenerateTitleAsync(
 // cannot silently proceed while this store is unreachable either.
 func (s *sessionService) holdSandboxTurn(
 	ctx context.Context, sessionID, configID string,
-) (func(), error) {
+) (release func(), err error) {
 	noop := func() {}
 	if strings.TrimSpace(sessionID) == "" {
 		return noop, nil
 	}
+	releaseCapacity, err := s.holdConfiguredSandboxCapacity(ctx, sessionID, configID)
+	if err != nil {
+		return noop, err
+	}
+	defer func() {
+		if err != nil {
+			releaseCapacity()
+			return
+		}
+		closeTurn := release
+		var once sync.Once
+		release = func() { once.Do(func() { defer releaseCapacity(); closeTurn() }) }
+	}()
 	releaseGate, err := s.busyGate.HoldSend(sessionID)
 	if err != nil {
 		return noop, err

@@ -9,6 +9,7 @@ import (
 	"io"
 	"iter"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -821,7 +822,9 @@ func TestDockerClientExecWrapsCommandWithTimeoutAndActivityMarker(t *testing.T) 
 	opts := engine.execOptions[0]
 	require.Equal(t, DefaultSandboxExecUser, opts.User)
 	require.Equal(t, SessionWorkspaceRoot, opts.WorkingDir)
-	require.Equal(t, []string{"K=V"}, opts.Env)
+	require.Contains(t, opts.Env, "K=V")
+	require.Len(t, opts.Env, 2)
+	require.True(t, strings.HasPrefix(opts.Env[0], dockerExecIDEnv+"=") || strings.HasPrefix(opts.Env[1], dockerExecIDEnv+"="))
 	require.Equal(t, "/bin/sh", opts.Cmd[0])
 	require.Contains(t, opts.Cmd[2], dockerActivityMarker)
 	require.Contains(t, opts.Cmd[2], "timeout -s KILL 45")
@@ -842,6 +845,32 @@ func TestDockerExecUserNeverFallsBackToRoot(t *testing.T) {
 	require.Equal(t, DefaultSandboxExecUser, dockerExecUser("   "))
 }
 
+func TestDockerExecMarkersAreUniqueAndCannotBeOverridden(t *testing.T) {
+	engine := newFakeDockerEngine()
+	docker := newTestDockerClient(t, engine)
+	env := map[string]string{dockerExecIDEnv: "caller-chosen", "K": "V"}
+	for i := 0; i < 2; i++ {
+		_, err := docker.Exec(context.Background(), testHandle("container-1"), RemoteExecRequest{
+			Command: "true", Env: env,
+		})
+		require.NoError(t, err)
+	}
+	tokens := make([]string, 0, 2)
+	for _, opts := range engine.execOptions {
+		for _, entry := range opts.Env {
+			if strings.HasPrefix(entry, dockerExecIDEnv+"=") {
+				tokens = append(tokens, strings.TrimPrefix(entry, dockerExecIDEnv+"="))
+			}
+		}
+	}
+	require.Len(t, tokens, 2)
+	require.NotEqual(t, tokens[0], tokens[1])
+	require.NotEqual(t, "caller-chosen", tokens[0])
+	require.NotEqual(t, "caller-chosen", tokens[1])
+	require.Equal(t, "caller-chosen", env[dockerExecIDEnv], "caller-owned environment must remain unchanged")
+	require.Empty(t, engine.execStarts, "successful executions must not trigger cancellation cleanup")
+}
+
 // Cancelling an exec leaves the copy goroutine writing into the output buffers.
 // Returning what they hold at that moment is a data race, so the adapter has to
 // close the stream and wait for the copier before reading them. Fails under
@@ -850,6 +879,13 @@ func TestDockerClientExecCancelWaitsForOutputCopier(t *testing.T) {
 	engine := newFakeDockerEngine()
 	engine.execStreamStalls = true
 	docker := newTestDockerClient(t, engine)
+	activityKey := docker.settings.Endpoint.key() + "\x00container-1"
+	engine.execCreateHook = func(client.ExecCreateOptions) {
+		dockerExecActivity.Lock()
+		active := dockerExecActivity.refs[activityKey]
+		dockerExecActivity.Unlock()
+		require.Positive(t, active, "execution and cancellation cleanup must both be protected from idle reclamation")
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -877,6 +913,110 @@ func TestDockerClientExecCancelWaitsForOutputCopier(t *testing.T) {
 	}
 	require.True(t, engine.execStream.drained.Load(),
 		"Exec returned while the copy goroutine was still writing into the output buffers it reads from")
+	require.Len(t, engine.execOptions, 2, "cancellation must issue an in-container cleanup exec")
+	cleanup := engine.execOptions[1]
+	require.Equal(t, DefaultSandboxExecUser, cleanup.User)
+	require.Contains(t, cleanup.Cmd[4], "kill -KILL")
+	require.Len(t, engine.execStarts, 1)
+	require.True(t, engine.execStarts[0].options.Detach)
+	var token string
+	for _, entry := range engine.execOptions[0].Env {
+		if strings.HasPrefix(entry, dockerExecIDEnv+"=") {
+			token = strings.TrimPrefix(entry, dockerExecIDEnv+"=")
+		}
+	}
+	require.NotEmpty(t, token)
+	require.Equal(t, token, cleanup.Cmd[len(cleanup.Cmd)-1])
+	require.Empty(t, cleanup.Env, "cleanup must not inherit the execution marker and kill itself")
+	dockerExecActivity.Lock()
+	active := dockerExecActivity.refs[activityKey]
+	dockerExecActivity.Unlock()
+	require.Zero(t, active, "finished cancellation must release idle-reclamation protection")
+}
+
+// Opt-in real-daemon regression: a cancelled command must stop its entire
+// timeout process group, while an unrelated concurrent execution keeps going.
+// Uses the same standard sandbox image as the Docker conformance suite.
+func TestDockerExecCancellationStopsOnlyItsProcessTree(t *testing.T) {
+	image := os.Getenv("DOCKER_CANCEL_TEST_IMAGE")
+	if image == "" {
+		t.Skip("set DOCKER_CANCEL_TEST_IMAGE to run the real-daemon cancellation regression")
+	}
+	cfg := DefaultConfig()
+	cfg.Type = SandboxTypeDocker
+	cfg.DockerImage = image
+	cfg.DockerHost = os.Getenv("DOCKER_CANCEL_TEST_HOST")
+	docker, err := NewDockerRemoteClient(cfg)
+	require.NoError(t, err)
+	docker.sweeper = nil
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	handle, err := docker.Create(ctx, RemoteCreateRequest{TemplateID: image})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		require.NoError(t, docker.Delete(cleanupCtx, handle.ID()))
+	})
+	t.Run("completion-keeps-original-exit-code", func(t *testing.T) {
+		result, err := docker.Exec(ctx, handle, RemoteExecRequest{
+			Shell: true, Command: "exit 7", Timeout: 5 * time.Second,
+		})
+		require.NoError(t, err)
+		require.Equal(t, 7, result.ExitCode)
+		require.False(t, result.Killed)
+	})
+	t.Run("timeout-still-reports-killed", func(t *testing.T) {
+		result, err := docker.Exec(ctx, handle, RemoteExecRequest{
+			Shell: true, Command: "sleep 30", Timeout: time.Second,
+		})
+		require.NoError(t, err)
+		require.True(t, result.Killed)
+	})
+	otherDone := make(chan error, 1)
+	go func() {
+		result, err := docker.Exec(ctx, handle, RemoteExecRequest{
+			Shell: true, Command: "sleep 2; echo concurrent-survived", Timeout: 10 * time.Second,
+		})
+		if err == nil && !strings.Contains(result.Stdout, "concurrent-survived") {
+			err = errors.New("unrelated execution was killed")
+		}
+		otherDone <- err
+	}()
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	ready := make(chan struct{})
+	var once sync.Once
+	done := make(chan error, 1)
+	go func() {
+		_, err := docker.Exec(runCtx, handle, RemoteExecRequest{
+			Shell:   true,
+			Command: `env -i sleep 30 & echo $! > /workspace/cancel-child.pid; echo ready; wait`,
+			Timeout: 40 * time.Second,
+			OnOutput: func(_ string, data []byte) {
+				if strings.Contains(string(data), "ready") {
+					once.Do(func() { close(ready) })
+				}
+			},
+		})
+		done <- err
+	}()
+	select {
+	case <-ready:
+	case <-ctx.Done():
+		t.Fatal("command did not start")
+	}
+	stop()
+	require.Error(t, <-done)
+	result, err := docker.Exec(ctx, handle, RemoteExecRequest{
+		Shell:   true,
+		Command: `p=$(cat /workspace/cancel-child.pid); if [ -r "/proc/$p/stat" ]; then s=$(cat "/proc/$p/stat"); set -- ${s##*) }; [ "$1" = Z ] || exit 9; fi; echo child-stopped`,
+		Timeout: 5 * time.Second,
+	})
+	require.NoError(t, err)
+	require.Zero(t, result.ExitCode, result.Stderr)
+	require.Contains(t, result.Stdout, "child-stopped")
+	require.NoError(t, <-otherDone)
 }
 
 // A script containing shell metacharacters must not be re-interpreted by the
