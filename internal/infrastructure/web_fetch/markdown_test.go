@@ -113,3 +113,27 @@ func TestMarkdownExtractionFixtures(t *testing.T) {
 		})
 	}
 }
+
+func TestWeChatPrefersExplicitArticleBoundary(t *testing.T) {
+	source := `<html><head><title>公众号标题</title></head><body>
+ <header><h1 id="activity-name">UGC平台生态榜单</h1><p>原创 作者信息</p></header>
+ <div id="js_content" style="visibility:hidden"><h2>原神千星奇域一周年</h2>
+ <p>FIRST_SECTION：文章正文的开始。</p><p>Read <a href="/s/reference">reference</a>.</p>
+ <table><tr><th>平台</th><th>数据</th></tr><tr><td>UEFN</td><td>42</td></tr></table>
+ <pre><code>if (a &lt; b) { return a; }</code></pre>
+ <p>FINAL_SECTION：欢迎更多行业朋友和我们交流。</p></div>
+ <footer>不喜欢 TOOLBAR_NOISE</footer></body></html>`
+	content, err := htmlToMarkdown(source, "https://mp.weixin.qq.com/s/example")
+	require.NoError(t, err)
+	for _, marker := range []string{"# UGC平台生态榜单", "FIRST", "FINAL", "https://mp.weixin.qq.com/s/reference", "| 平台", "if (a < b)"} {
+		require.Contains(t, content, marker)
+	}
+	require.NotContains(t, content, "TOOLBAR_NOISE")
+	require.NotContains(t, content, "原创 作者信息")
+}
+
+func TestWeChatEmptyArticleUsesGenericFallback(t *testing.T) {
+	content, err := htmlToMarkdown(`<html><body><div id="js_content"></div><article><p>Fallback article remains readable.</p></article></body></html>`, "https://mp.weixin.qq.com/s/example")
+	require.NoError(t, err)
+	require.Contains(t, content, "Fallback article remains readable")
+}

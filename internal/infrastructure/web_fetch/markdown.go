@@ -26,15 +26,35 @@ func htmlToMarkdown(source, rawURL string) (string, error) {
 	}
 	title := strings.TrimSpace(doc.Find("title").First().Text())
 	extractedArticle := false
-	article, readErr := readability.FromReader(strings.NewReader(source), pageURL)
-	if readErr == nil && article.Node != nil {
-		var buf bytes.Buffer
-		if article.RenderHTML(&buf) == nil && strings.TrimSpace(buf.String()) != "" {
-			if extracted, parseErr := goquery.NewDocumentFromReader(&buf); parseErr == nil {
-				doc = extracted
-				extractedArticle = true
-				if article.Title() != "" {
-					title = article.Title()
+	// WeChat hides its article in #js_content; generic Readability can select
+	// the short title/author toolbar instead. Prefer the publisher's explicit
+	// article boundary before applying generic extraction.
+	wechatArticle := doc.Find("#js_content").First()
+	if strings.EqualFold(pageURL.Hostname(), "mp.weixin.qq.com") &&
+		wechatArticle.Length() != 0 && strings.TrimSpace(wechatArticle.Text()) != "" {
+		if heading := strings.TrimSpace(doc.Find("#activity-name").First().Text()); heading != "" {
+			title = heading
+		}
+		articleHTML, htmlErr := wechatArticle.Html()
+		if htmlErr != nil {
+			return "", newFetchError(ErrorHTMLParse, false, "WeChat article extraction failed: %v", htmlErr)
+		}
+		doc, err = goquery.NewDocumentFromReader(strings.NewReader("<html><body>" + articleHTML + "</body></html>"))
+		if err != nil {
+			return "", newFetchError(ErrorHTMLParse, false, "WeChat article parse failed: %v", err)
+		}
+		extractedArticle = true
+	} else {
+		article, readErr := readability.FromReader(strings.NewReader(source), pageURL)
+		if readErr == nil && article.Node != nil {
+			var buf bytes.Buffer
+			if article.RenderHTML(&buf) == nil && strings.TrimSpace(buf.String()) != "" {
+				if extracted, parseErr := goquery.NewDocumentFromReader(&buf); parseErr == nil {
+					doc = extracted
+					extractedArticle = true
+					if article.Title() != "" {
+						title = article.Title()
+					}
 				}
 			}
 		}

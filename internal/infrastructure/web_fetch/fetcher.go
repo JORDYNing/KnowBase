@@ -7,8 +7,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io"
-	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -25,8 +23,9 @@ import (
 const (
 	fetchTimeout         = 60 * time.Second
 	pipelineFetchTimeout = 15 * time.Second
-	maxBodySize          = 100 * 1024
+	maxBodySize          = 2 * 1024 * 1024
 	maxAgentBodySize     = 2 * 1024 * 1024
+	maxDownloadSize      = 32 * 1024 * 1024
 )
 
 // ErrorCode identifies the stage and class of a fetch failure.
@@ -234,20 +233,9 @@ func (f *Fetcher) fetchHTTP(ctx context.Context, rawURL string, parsedURL *url.U
 	if !success {
 		return nil, classifyHTTPStatus(resp.StatusCode, resp.Status)
 	}
-	readLimit := f.maxBodySize
-	if f.markdown {
-		readLimit++
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, readLimit))
+	body, contentType, err := readPageBody(resp.Body, resp.Header.Get("Content-Type"), f.maxBodySize)
 	if err != nil {
-		return nil, newFetchError(ErrorRead, true, "read failed: %v", err)
-	}
-	if f.markdown && int64(len(body)) > f.maxBodySize {
-		return nil, newFetchError(ErrorBodyTooLarge, false, "page exceeds the %d byte download limit", f.maxBodySize)
-	}
-	contentType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if contentType == "" {
-		contentType, _, _ = mime.ParseMediaType(http.DetectContentType(body))
+		return nil, err
 	}
 	finalURL := rawURL
 	if resp.Request != nil && resp.Request.URL != nil {
@@ -360,10 +348,8 @@ func renderWithChromium(ctx context.Context, target pinnedTarget) (string, error
 	); err != nil {
 		return "", fmt.Errorf("chromium render failed: %w", err)
 	}
-	if len(html) > maxAgentBodySize {
-		return "", newFetchError(ErrorBodyTooLarge, false, "rendered page exceeds download limit")
-	}
-	return html, nil
+	body, _, err := readPageBody(strings.NewReader(html), "text/html", maxAgentBodySize)
+	return string(body), err
 }
 
 func needsBrowserFallback(content string, html []byte) bool {
